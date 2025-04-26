@@ -1,4 +1,3 @@
-
 export interface PollingStation {
   id: string;
   name: string;
@@ -8,6 +7,7 @@ export interface PollingStation {
 export interface Candidate {
   id: string;
   name: string;
+  gender?: "male" | "female";
 }
 
 export interface Result {
@@ -31,7 +31,6 @@ export interface ExtractedResult {
   votes: number;
 }
 
-// The remaining mock data matches the original format but with string IDs instead of numbers
 export const pollingStations: PollingStation[] = [
   { id: "1", name: "Central Primary School", district: "Eastern District" },
   { id: "2", name: "Grace Community Center", district: "Western District" },
@@ -46,10 +45,10 @@ export const pollingStations: PollingStation[] = [
 ];
 
 export const candidates: Candidate[] = [
-  { id: "1", name: "John Doe" },
-  { id: "2", name: "Jane Smith" },
-  { id: "3", name: "Michael Johnson" },
-  { id: "4", name: "Emily Williams" },
+  { id: "1", name: "John Doe", gender: "male" },
+  { id: "2", name: "Jane Smith", gender: "female" },
+  { id: "3", name: "Michael Johnson", gender: "male" },
+  { id: "4", name: "Emily Williams", gender: "female" },
 ];
 
 export const results: Result[] = [
@@ -88,7 +87,6 @@ export const uploads: Upload[] = [
   },
 ];
 
-// Add station info to uploads
 export const uploadsWithStations = uploads.map(upload => {
   const station = pollingStations.find(station => station.id === upload.stationId);
   return {
@@ -97,7 +95,6 @@ export const uploadsWithStations = uploads.map(upload => {
   };
 });
 
-// Add results to uploads
 export const completeUploads = uploadsWithStations.map(upload => {
   const uploadResults = results
     .filter(result => result.uploadId === upload.id)
@@ -115,18 +112,14 @@ export const completeUploads = uploadsWithStations.map(upload => {
   };
 });
 
-// Authentication data
 export const adminUser = {
   username: "admin",
   password: "password123"
 };
 
-// Function to simulate OCR processing
 export const simulateOCR = (imageUrl: string): Promise<ExtractedResult[]> => {
   return new Promise((resolve) => {
-    // Simulate network delay
     setTimeout(() => {
-      // Randomly generate results
       const extractedResults = candidates.map(candidate => ({
         candidateName: candidate.name,
         votes: Math.floor(Math.random() * 300) + 50
@@ -137,7 +130,6 @@ export const simulateOCR = (imageUrl: string): Promise<ExtractedResult[]> => {
   });
 };
 
-// Function to get total votes per candidate across all stations
 export const getTotalVotesPerCandidate = () => {
   return candidates.map(candidate => {
     const candidateResults = results.filter(result => result.candidateId === candidate.id);
@@ -150,7 +142,30 @@ export const getTotalVotesPerCandidate = () => {
   });
 };
 
-// Get uploaded stations IDs
 export const getUploadedStationIds = () => {
   return uploads.map(upload => upload.stationId);
+};
+
+export const getVotesByGender = () => {
+  const maleVotes = candidates
+    .filter(c => c.gender === "male")
+    .map(c => {
+      const candidateResults = results.filter(r => r.candidateId === c.id);
+      return candidateResults.reduce((sum, r) => sum + r.votes, 0);
+    })
+    .reduce((sum, votes) => sum + votes, 0);
+    
+  const femaleVotes = candidates
+    .filter(c => c.gender === "female")
+    .map(c => {
+      const candidateResults = results.filter(r => r.candidateId === c.id);
+      return candidateResults.reduce((sum, r) => sum + r.votes, 0);
+    })
+    .reduce((sum, votes) => sum + votes, 0);
+    
+  return {
+    male: maleVotes,
+    female: femaleVotes,
+    total: maleVotes + femaleVotes
+  };
 };

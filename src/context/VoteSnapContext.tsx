@@ -12,6 +12,7 @@ interface VoteSnapContextType {
   getAvailableStations: () => Promise<any[]>;
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<ExtractedResult[]>;
+  getVotesByGender: () => Promise<{ male: number; female: number; total: number }>;
 }
 
 const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined);
@@ -190,6 +191,50 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const getVotesByGender = async () => {
+    try {
+      // This is a simplified approach. In a real app, you'd have gender info in your database
+      // For demo purposes, we'll use a naming convention
+      const { data: results } = await supabase
+        .from('results')
+        .select(`
+          votes,
+          candidates (
+            name
+          )
+        `);
+        
+      let maleVotes = 0;
+      let femaleVotes = 0;
+      
+      results?.forEach(result => {
+        const candidateName = result.candidates?.name.toLowerCase() || "";
+        // Mock logic: names with 'john' or 'michael' are counted as male voters
+        if (candidateName.includes('john') || candidateName.includes('michael')) {
+          maleVotes += result.votes;
+        } 
+        // Mock logic: names with 'jane' or 'emily' are counted as female voters
+        else if (candidateName.includes('jane') || candidateName.includes('emily')) {
+          femaleVotes += result.votes;
+        }
+        // For other names, distribute evenly
+        else {
+          maleVotes += Math.round(result.votes / 2);
+          femaleVotes += result.votes - Math.round(result.votes / 2);
+        }
+      });
+      
+      return {
+        male: maleVotes,
+        female: femaleVotes,
+        total: maleVotes + femaleVotes
+      };
+    } catch (error) {
+      console.error("Error getting votes by gender:", error);
+      return { male: 0, female: 0, total: 0 };
+    }
+  };
+
   const processDRForm = async (imageUrl: string): Promise<ExtractedResult[]> => {
     const { data, error } = await supabase.functions.invoke('process-dr-form', {
       body: { imageUrl },
@@ -209,7 +254,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         addUpload,
         getAvailableStations,
         getTotalVotes,
-        processDRForm
+        processDRForm,
+        getVotesByGender
       }}
     >
       {children}

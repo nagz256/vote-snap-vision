@@ -5,8 +5,11 @@ import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, LogOut } from "lucide-react";
+import { Link } from "react-router-dom";
+import StatsCards from "@/components/admin/StatsCards";
+import UploadedImages from "@/components/admin/UploadedImages";
+import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 
 const Admin = () => {
   const [username, setUsername] = useState("");
@@ -15,7 +18,7 @@ const Admin = () => {
   const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
   const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
   
-  const { isAdmin, login, logout, uploads, getTotalVotes } = useVoteSnap();
+  const { isAdmin, login, logout } = useVoteSnap();
 
   // Fetch total votes data when admin logs in
   useEffect(() => {
@@ -26,14 +29,29 @@ const Admin = () => {
 
   const fetchTotalVotes = async () => {
     try {
-      const data = await getTotalVotes();
-      setTotalVotesData(data);
+      const { data: resultsData } = await supabase
+        .from('results')
+        .select(`
+          votes,
+          candidates (
+            name
+          )
+        `);
+
+      const totalVotes: Record<string, number> = {};
+      resultsData?.forEach(result => {
+        const candidateName = result.candidates.name;
+        totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+      });
+
+      const voteData = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+      setTotalVotesData(voteData);
       
       // Calculate percentage data
-      const totalVotes = data.reduce((sum, item) => sum + item.votes, 0);
-      const percentData = data.map(item => ({
+      const totalVotesSum = voteData.reduce((sum, item) => sum + item.votes, 0);
+      const percentData = voteData.map(item => ({
         ...item,
-        percentage: ((item.votes / totalVotes) * 100).toFixed(1)
+        percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
       }));
       setPercentageData(percentData);
     } catch (error) {
@@ -106,142 +124,126 @@ const Admin = () => {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={logout}>
-          <LogOut size={16} />
-          Logout
-        </Button>
-      </div>
-      
-      {/* Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Percentage Chart */}
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle>Vote Percentage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={percentageData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={true}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="votes"
-                    nameKey="name"
-                    label={({ name, percentage }) => `${name}: ${percentage}%`}
-                  >
-                    {percentageData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value} votes`, ""]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+    <>
+      <LiveUploadNotification />
+      <div className="space-y-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <div className="flex gap-4">
+            <Button variant="outline" asChild>
+              <Link to="/polling-stations">Manage Polling Stations</Link>
+            </Button>
+            <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={logout}>
+              <LogOut size={16} />
+              Logout
+            </Button>
+          </div>
+        </div>
         
-        {/* Total Votes Chart */}
+        {/* Statistics Cards */}
+        <StatsCards />
+        
+        {/* Charts */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Percentage Chart */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle>Vote Percentage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={percentageData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="votes"
+                      nameKey="name"
+                      label={({ name, percentage }) => `${name}: ${percentage}%`}
+                    >
+                      {percentageData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} votes`, ""]} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Total Votes Chart */}
+          <Card className="glass-card">
+            <CardHeader>
+              <CardTitle>Total Votes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={totalVotesData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={true}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="votes"
+                      nameKey="name"
+                      label={({ name, votes }) => `${name}: ${votes}`}
+                    >
+                      {totalVotesData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${value} votes`, ""]} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Uploaded Images Gallery */}
+        <UploadedImages />
+        
+        {/* Polling Station Results */}
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>Total Votes</CardTitle>
+            <CardTitle>Polling Station Results</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={totalVotesData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={true}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="votes"
-                    nameKey="name"
-                    label={({ name, votes }) => `${name}: ${votes}`}
-                  >
-                    {totalVotesData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value} votes`, ""]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {/* We'll use the existing code for this section */}
+              {uploads.map(upload => (
+                <Card key={upload.id} className="bg-white/40 border-white/30">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{upload.station?.name}</CardTitle>
+                    <p className="text-xs text-foreground/70">{upload.station?.district}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {upload.results?.map((result, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span>{result.candidateName}</span>
+                          <span className="font-medium">{result.votes}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </CardContent>
         </Card>
       </div>
-      
-      {/* Live Feed */}
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle>Live Submission Feed</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="max-h-64 overflow-y-auto pr-2">
-            {uploads.length === 0 ? (
-              <p className="text-center text-foreground/70 py-6">No submissions yet</p>
-            ) : (
-              <div className="space-y-3">
-                {uploads.map(upload => (
-                  <div key={upload.id} className="flex items-center justify-between p-3 bg-white/40 rounded-lg">
-                    <div>
-                      <p className="font-medium">{upload.station?.name}</p>
-                      <p className="text-sm text-foreground/70">
-                        {formatDistanceToNow(parseISO(upload.timestamp), { addSuffix: true })}
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="flex items-center gap-1">
-                      <Eye size={16} />
-                      View
-                    </Button>
-                  </div>
-                )).reverse()}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Polling Stations */}
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle>Polling Station Results</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {uploads.map(upload => (
-              <Card key={upload.id} className="bg-white/40 border-white/30">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{upload.station?.name}</CardTitle>
-                  <p className="text-xs text-foreground/70">{upload.station?.district}</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {upload.results?.map((result, idx) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span>{result.candidateName}</span>
-                        <span className="font-medium">{result.votes}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    </>
   );
 };
 

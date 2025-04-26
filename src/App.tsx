@@ -11,7 +11,12 @@ import Layout from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Agent from "./pages/Agent";
 import Admin from "./pages/Admin";
+import PollingStations from "./pages/PollingStations";
 import NotFound from "./pages/NotFound";
+import { supabase } from "@/integrations/supabase/client";
+
+// Fix for React Native compatibility
+import { createClient } from '@supabase/supabase-js';
 
 const queryClient = new QueryClient();
 
@@ -27,6 +32,7 @@ const App = () => (
               <Route path="/" element={<Home />} />
               <Route path="/agent" element={<Agent />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/polling-stations" element={<PollingStations />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
