@@ -28,56 +28,60 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   }, [isAdmin]);
 
   const fetchUploads = async () => {
-    const { data: uploadsData, error } = await supabase
-      .from('uploads')
-      .select(`
-        id,
-        image_path,
-        station_id,
-        timestamp,
-        polling_stations (
+    try {
+      const { data: uploadsData, error } = await supabase
+        .from('uploads')
+        .select(`
           id,
-          name,
-          district
-        )
-      `);
+          image_path,
+          station_id,
+          timestamp,
+          polling_stations (
+            id,
+            name,
+            district
+          )
+        `);
 
-    if (error) {
-      console.error("Error fetching uploads:", error);
-      return;
+      if (error) {
+        console.error("Error fetching uploads:", error);
+        return;
+      }
+
+      // For each upload, fetch its results
+      const uploadsWithResults = await Promise.all(
+        uploadsData.map(async (upload) => {
+          const { data: resultsData } = await supabase
+            .from('results')
+            .select(`
+              votes,
+              candidates (
+                id,
+                name
+              )
+            `)
+            .eq('upload_id', upload.id);
+
+          const formattedResults = resultsData?.map(result => ({
+            candidateName: result.candidates.name,
+            votes: result.votes
+          })) || [];
+
+          return {
+            id: upload.id,
+            stationId: upload.station_id,
+            imagePath: upload.image_path,
+            timestamp: upload.timestamp,
+            station: upload.polling_stations,
+            results: formattedResults
+          } as Upload;
+        })
+      );
+
+      setUploads(uploadsWithResults);
+    } catch (error) {
+      console.error("Error in fetchUploads:", error);
     }
-
-    // For each upload, fetch its results
-    const uploadsWithResults = await Promise.all(
-      uploadsData.map(async (upload) => {
-        const { data: resultsData } = await supabase
-          .from('results')
-          .select(`
-            votes,
-            candidates (
-              id,
-              name
-            )
-          `)
-          .eq('upload_id', upload.id);
-
-        const formattedResults = resultsData?.map(result => ({
-          candidateName: result.candidates.name,
-          votes: result.votes
-        })) || [];
-
-        return {
-          id: upload.id,
-          stationId: upload.station_id,
-          imagePath: upload.image_path,
-          timestamp: upload.timestamp,
-          station: upload.polling_stations,
-          results: formattedResults
-        };
-      })
-    );
-
-    setUploads(uploadsWithResults);
   };
 
   const login = (username: string, password: string) => {
@@ -94,7 +98,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const addUpload = async (
     uploadData: { stationId: string; imagePath: string },
-    results: { candidateName: string; votes: number }[]
+    results: ExtractedResult[]
   ) => {
     const { data: upload, error: uploadError } = await supabase
       .from('uploads')
@@ -135,45 +139,55 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getAvailableStations = async () => {
-    const { data: submittedStations } = await supabase
-      .from('uploads')
-      .select('station_id');
+    try {
+      const { data: submittedStations } = await supabase
+        .from('uploads')
+        .select('station_id');
 
-    // Handle case where no stations have been submitted yet
-    if (!submittedStations || submittedStations.length === 0) {
-      const { data: allStations } = await supabase
+      // Handle case where no stations have been submitted yet
+      if (!submittedStations || submittedStations.length === 0) {
+        const { data: allStations } = await supabase
+          .from('polling_stations')
+          .select('*');
+        return allStations || [];
+      }
+
+      const submittedIds = submittedStations.map(s => s.station_id);
+
+      const { data: stations } = await supabase
         .from('polling_stations')
-        .select('*');
-      return allStations || [];
+        .select('*')
+        .not('id', 'in', `(${submittedIds.join(',')})`);
+
+      return stations || [];
+    } catch (error) {
+      console.error("Error fetching available stations:", error);
+      return [];
     }
-
-    const submittedIds = submittedStations.map(s => s.station_id);
-
-    const { data: stations } = await supabase
-      .from('polling_stations')
-      .select('*')
-      .not('id', 'in', `(${submittedIds.join(',')})`);
-
-    return stations || [];
   };
 
   const getTotalVotes = async () => {
-    const { data: results } = await supabase
-      .from('results')
-      .select(`
-        votes,
-        candidates (
-          name
-        )
-      `);
+    try {
+      const { data: results } = await supabase
+        .from('results')
+        .select(`
+          votes,
+          candidates (
+            name
+          )
+        `);
 
-    const totalVotes: Record<string, number> = {};
-    results?.forEach(result => {
-      const candidateName = result.candidates.name;
-      totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
-    });
+      const totalVotes: Record<string, number> = {};
+      results?.forEach(result => {
+        const candidateName = result.candidates.name;
+        totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+      });
 
-    return Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+      return Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+    } catch (error) {
+      console.error("Error getting total votes:", error);
+      return [];
+    }
   };
 
   const processDRForm = async (imageUrl: string): Promise<ExtractedResult[]> => {
