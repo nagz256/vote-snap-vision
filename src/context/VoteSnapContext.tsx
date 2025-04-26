@@ -1,6 +1,7 @@
 
-import { createContext, useState, useContext, ReactNode } from "react";
+import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Upload, ExtractedResult } from "@/data/mockData";
 
 interface VoteSnapContextType {
   uploads: Upload[];
@@ -17,6 +18,67 @@ const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined
 
 export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [uploads, setUploads] = useState<Upload[]>([]);
+
+  // Fetch uploads when admin logs in
+  useEffect(() => {
+    if (isAdmin) {
+      fetchUploads();
+    }
+  }, [isAdmin]);
+
+  const fetchUploads = async () => {
+    const { data: uploadsData, error } = await supabase
+      .from('uploads')
+      .select(`
+        id,
+        image_path,
+        station_id,
+        timestamp,
+        polling_stations (
+          id,
+          name,
+          district
+        )
+      `);
+
+    if (error) {
+      console.error("Error fetching uploads:", error);
+      return;
+    }
+
+    // For each upload, fetch its results
+    const uploadsWithResults = await Promise.all(
+      uploadsData.map(async (upload) => {
+        const { data: resultsData } = await supabase
+          .from('results')
+          .select(`
+            votes,
+            candidates (
+              id,
+              name
+            )
+          `)
+          .eq('upload_id', upload.id);
+
+        const formattedResults = resultsData?.map(result => ({
+          candidateName: result.candidates.name,
+          votes: result.votes
+        })) || [];
+
+        return {
+          id: upload.id,
+          stationId: upload.station_id,
+          imagePath: upload.image_path,
+          timestamp: upload.timestamp,
+          station: upload.polling_stations,
+          results: formattedResults
+        };
+      })
+    );
+
+    setUploads(uploadsWithResults);
+  };
 
   const login = (username: string, password: string) => {
     if (username === "admin" && password === "password123") {
@@ -65,6 +127,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           }]);
       }
     }
+
+    // Refresh uploads if admin is logged in
+    if (isAdmin) {
+      fetchUploads();
+    }
   };
 
   const getAvailableStations = async () => {
@@ -72,7 +139,15 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       .from('uploads')
       .select('station_id');
 
-    const submittedIds = submittedStations?.map(s => s.station_id) || [];
+    // Handle case where no stations have been submitted yet
+    if (!submittedStations || submittedStations.length === 0) {
+      const { data: allStations } = await supabase
+        .from('polling_stations')
+        .select('*');
+      return allStations || [];
+    }
+
+    const submittedIds = submittedStations.map(s => s.station_id);
 
     const { data: stations } = await supabase
       .from('polling_stations')
@@ -113,7 +188,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   return (
     <VoteSnapContext.Provider
       value={{
-        uploads: [],
+        uploads,
         isAdmin,
         login,
         logout,

@@ -1,5 +1,5 @@
 
-import { useState, useRef, ChangeEvent } from "react";
+import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,14 +8,21 @@ import { toast } from "@/components/ui/use-toast";
 import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
 
 interface FormData {
-  stationId: number | null;
+  stationId: string | null;
   image: File | null;
   previewUrl: string;
 }
 
+interface PollingStation {
+  id: string;
+  name: string;
+  district: string;
+}
+
 const Agent = () => {
   const { getAvailableStations, processDRForm, addUpload } = useVoteSnap();
-  const stations = getAvailableStations();
+  const [stations, setStations] = useState<PollingStation[]>([]);
+  const [isLoadingStations, setIsLoadingStations] = useState(true);
   
   const [formData, setFormData] = useState<FormData>({
     stationId: null,
@@ -30,10 +37,32 @@ const Agent = () => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch available stations on component mount
+  useEffect(() => {
+    fetchStations();
+  }, []);
+
+  const fetchStations = async () => {
+    try {
+      setIsLoadingStations(true);
+      const availableStations = await getAvailableStations();
+      setStations(availableStations);
+    } catch (error) {
+      console.error("Error fetching stations:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load polling stations",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingStations(false);
+    }
+  };
+
   const handleStationChange = (value: string) => {
     setFormData({
       ...formData,
-      stationId: parseInt(value),
+      stationId: value,
     });
   };
 
@@ -95,7 +124,7 @@ const Agent = () => {
     setExtractedResults(updatedResults);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.stationId || !formData.previewUrl || extractedResults.length === 0) {
       toast({
         title: "Missing information",
@@ -106,42 +135,42 @@ const Agent = () => {
     }
 
     setIsSubmitting(true);
-    
-    // Simulate sending to server
-    setTimeout(() => {
-      try {
-        addUpload(
-          {
-            stationId: formData.stationId,
-            imagePath: formData.previewUrl,
-          },
-          extractedResults
-        );
-        
-        // Reset form
-        setFormData({
-          stationId: null,
-          image: null,
-          previewUrl: "",
-        });
-        setExtractedResults([]);
-        setIsEditing(false);
-        
-        toast({
-          title: "Success!",
-          description: "Results submitted successfully.",
-          variant: "default",
-        });
-      } catch (error) {
-        toast({
-          title: "Submission failed",
-          description: "There was an error submitting the results.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsSubmitting(false);
-      }
-    }, 1500);
+    try {
+      await addUpload(
+        {
+          stationId: formData.stationId,
+          imagePath: formData.previewUrl,
+        },
+        extractedResults
+      );
+      
+      // Reset form
+      setFormData({
+        stationId: null,
+        image: null,
+        previewUrl: "",
+      });
+      setExtractedResults([]);
+      setIsEditing(false);
+      
+      toast({
+        title: "Success!",
+        description: "Results submitted successfully.",
+        variant: "default",
+      });
+      
+      // Refresh available stations
+      fetchStations();
+    } catch (error) {
+      console.error("Submission error:", error);
+      toast({
+        title: "Submission failed",
+        description: "There was an error submitting the results.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -155,14 +184,16 @@ const Agent = () => {
             <h2 className="text-lg font-medium mb-3">Step 1: Select Your Polling Station</h2>
             <Select value={formData.stationId?.toString()} onValueChange={handleStationChange}>
               <SelectTrigger className="glass-input">
-                <SelectValue placeholder="Select a polling station" />
+                <SelectValue placeholder={isLoadingStations ? "Loading stations..." : "Select a polling station"} />
               </SelectTrigger>
               <SelectContent>
-                {stations.length === 0 ? (
+                {isLoadingStations ? (
+                  <SelectItem value="loading" disabled>Loading stations...</SelectItem>
+                ) : stations.length === 0 ? (
                   <SelectItem value="none" disabled>No stations available</SelectItem>
                 ) : (
                   stations.map(station => (
-                    <SelectItem key={station.id} value={station.id.toString()}>
+                    <SelectItem key={station.id} value={station.id}>
                       {station.name} ({station.district})
                     </SelectItem>
                   ))

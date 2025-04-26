@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
@@ -12,8 +12,34 @@ const Admin = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
+  const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
   
   const { isAdmin, login, logout, uploads, getTotalVotes } = useVoteSnap();
+
+  // Fetch total votes data when admin logs in
+  useEffect(() => {
+    if (isAdmin) {
+      fetchTotalVotes();
+    }
+  }, [isAdmin]);
+
+  const fetchTotalVotes = async () => {
+    try {
+      const data = await getTotalVotes();
+      setTotalVotesData(data);
+      
+      // Calculate percentage data
+      const totalVotes = data.reduce((sum, item) => sum + item.votes, 0);
+      const percentData = data.map(item => ({
+        ...item,
+        percentage: ((item.votes / totalVotes) * 100).toFixed(1)
+      }));
+      setPercentageData(percentData);
+    } catch (error) {
+      console.error("Error fetching vote data:", error);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +50,6 @@ const Admin = () => {
     }
   };
 
-  const totalVotesData = getTotalVotes();
   const COLORS = ['#9b87f5', '#7E69AB', '#D6BCFA', '#6357b5'];
   
   if (!isAdmin) {
@@ -79,15 +104,6 @@ const Admin = () => {
       </div>
     );
   }
-
-  // Format data for pie charts
-  const percentageData = [...totalVotesData].map(item => {
-    const totalVotes = totalVotesData.reduce((sum, i) => sum + i.votes, 0);
-    return {
-      ...item,
-      percentage: ((item.votes / totalVotes) * 100).toFixed(1)
-    };
-  });
 
   return (
     <div className="space-y-8">
