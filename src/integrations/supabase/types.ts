@@ -9,7 +9,107 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      candidates: {
+        Row: {
+          id: string
+          name: string
+        }
+        Insert: {
+          id?: string
+          name: string
+        }
+        Update: {
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      polling_stations: {
+        Row: {
+          created_at: string
+          district: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          district: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          district?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      results: {
+        Row: {
+          candidate_id: string
+          id: string
+          upload_id: string
+          votes: number
+        }
+        Insert: {
+          candidate_id: string
+          id?: string
+          upload_id: string
+          votes: number
+        }
+        Update: {
+          candidate_id?: string
+          id?: string
+          upload_id?: string
+          votes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "results_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "results_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      uploads: {
+        Row: {
+          id: string
+          image_path: string
+          station_id: string
+          timestamp: string
+        }
+        Insert: {
+          id?: string
+          image_path: string
+          station_id: string
+          timestamp?: string
+        }
+        Update: {
+          id?: string
+          image_path?: string
+          station_id?: string
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "uploads_station_id_fkey"
+            columns: ["station_id"]
+            isOneToOne: true
+            referencedRelation: "polling_stations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

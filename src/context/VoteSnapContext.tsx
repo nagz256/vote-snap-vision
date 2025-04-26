@@ -1,35 +1,24 @@
 
 import { createContext, useState, useContext, ReactNode } from "react";
-import { 
-  pollingStations, 
-  candidates, 
-  completeUploads, 
-  Upload, 
-  ExtractedResult,
-  getUploadedStationIds,
-  getTotalVotesPerCandidate,
-  simulateOCR
-} from "@/data/mockData";
+import { supabase } from "@/integrations/supabase/client";
 
 interface VoteSnapContextType {
   uploads: Upload[];
   isAdmin: boolean;
   login: (username: string, password: string) => boolean;
   logout: () => void;
-  addUpload: (upload: Omit<Upload, "id" | "timestamp">, results: ExtractedResult[]) => void;
-  getAvailableStations: () => typeof pollingStations;
-  getTotalVotes: () => Array<{ name: string; votes: number }>;
+  addUpload: (upload: Omit<Upload, "id" | "timestamp">, results: ExtractedResult[]) => Promise<void>;
+  getAvailableStations: () => Promise<any[]>;
+  getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<ExtractedResult[]>;
 }
 
 const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined);
 
 export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
-  const [uploads, setUploads] = useState<Upload[]>(completeUploads);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const login = (username: string, password: string) => {
-    // In a real app, this would validate against the backend
     if (username === "admin" && password === "password123") {
       setIsAdmin(true);
       return true;
@@ -41,38 +30,90 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     setIsAdmin(false);
   };
 
-  const addUpload = (
-    uploadData: Omit<Upload, "id" | "timestamp">,
-    results: ExtractedResult[]
+  const addUpload = async (
+    uploadData: { stationId: string; imagePath: string },
+    results: { candidateName: string; votes: number }[]
   ) => {
-    const newUpload: Upload = {
-      ...uploadData,
-      id: uploads.length + 1,
-      timestamp: new Date().toISOString(),
-      results: results,
-      station: pollingStations.find(station => station.id === uploadData.stationId)
-    };
+    const { data: upload, error: uploadError } = await supabase
+      .from('uploads')
+      .insert([{
+        station_id: uploadData.stationId,
+        image_path: uploadData.imagePath,
+      }])
+      .select()
+      .single();
 
-    setUploads(prev => [...prev, newUpload]);
+    if (uploadError) throw uploadError;
+
+    // Insert or get candidates
+    for (const result of results) {
+      // Try to insert candidate, ignore if already exists
+      const { data: candidate } = await supabase
+        .from('candidates')
+        .upsert([{ name: result.candidateName }], { onConflict: 'name' })
+        .select()
+        .single();
+
+      if (candidate) {
+        // Insert results
+        await supabase
+          .from('results')
+          .insert([{
+            upload_id: upload.id,
+            candidate_id: candidate.id,
+            votes: result.votes,
+          }]);
+      }
+    }
   };
 
-  const getAvailableStations = () => {
-    const uploadedStationIds = getUploadedStationIds();
-    return pollingStations.filter(station => !uploadedStationIds.includes(station.id));
+  const getAvailableStations = async () => {
+    const { data: submittedStations } = await supabase
+      .from('uploads')
+      .select('station_id');
+
+    const submittedIds = submittedStations?.map(s => s.station_id) || [];
+
+    const { data: stations } = await supabase
+      .from('polling_stations')
+      .select('*')
+      .not('id', 'in', `(${submittedIds.join(',')})`);
+
+    return stations || [];
   };
 
-  const getTotalVotes = () => {
-    return getTotalVotesPerCandidate();
+  const getTotalVotes = async () => {
+    const { data: results } = await supabase
+      .from('results')
+      .select(`
+        votes,
+        candidates (
+          name
+        )
+      `);
+
+    const totalVotes: Record<string, number> = {};
+    results?.forEach(result => {
+      const candidateName = result.candidates.name;
+      totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+    });
+
+    return Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
   };
 
-  const processDRForm = async (imageUrl: string) => {
-    return await simulateOCR(imageUrl);
+  const processDRForm = async (imageUrl: string): Promise<ExtractedResult[]> => {
+    const { data, error } = await supabase.functions.invoke('process-dr-form', {
+      body: { imageUrl },
+    });
+
+    if (error) throw error;
+    return data.results;
   };
 
   return (
     <VoteSnapContext.Provider
       value={{
-        uploads,
+        uploads: [],
         isAdmin,
         login,
         logout,
