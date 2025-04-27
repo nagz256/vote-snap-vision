@@ -102,7 +102,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   const refreshAvailableStations = async () => {
     const stations = await getAvailableStations();
     setAvailableStations(stations);
-    return stations;
+    // Return void to match the type definition
   };
 
   const addUpload = async (
@@ -147,7 +147,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         fetchUploads();
       }
 
-      return upload;
+      // Don't return anything to match void return type
     } catch (error) {
       console.error("Error adding upload:", error);
       throw error;

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useVoteSnap } from "@/context/VoteSnapContext";
-import { toast } from "@/components/ui/sonner";
+import { toast } from "sonner";
 import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
 
 interface FormData {
@@ -49,11 +49,7 @@ const Agent = () => {
       setStations(availableStations);
     } catch (error) {
       console.error("Error fetching stations:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load polling stations",
-        variant: "destructive",
-      });
+      toast.error("Failed to load polling stations");
     } finally {
       setIsLoadingStations(false);
     }
@@ -90,11 +86,7 @@ const Agent = () => {
 
   const processImage = async () => {
     if (!formData.previewUrl || !formData.stationId) {
-      toast({
-        title: "Missing information",
-        description: "Please select a polling station and upload an image.",
-        variant: "destructive",
-      });
+      toast.error("Please select a polling station and upload an image.");
       return;
     }
 
@@ -107,11 +99,7 @@ const Agent = () => {
       setIsEditing(true);
     } catch (error) {
       console.error("Error processing image:", error);
-      toast({
-        title: "Error processing image",
-        description: "There was an error extracting data from the image. Please try again or enter results manually.",
-        variant: "destructive",
-      });
+      toast.error("There was an error extracting data from the image. Please try again or enter results manually.");
       // If OCR fails, allow manual data entry with empty results
       setExtractedResults([
         { candidateName: "", votes: 0 },
@@ -144,11 +132,7 @@ const Agent = () => {
 
   const handleSubmit = async () => {
     if (!formData.stationId || !formData.previewUrl || extractedResults.length === 0) {
-      toast({
-        title: "Missing information",
-        description: "Please complete all steps before submitting.",
-        variant: "destructive",
-      });
+      toast.error("Please complete all steps before submitting.");
       return;
     }
 
@@ -158,11 +142,7 @@ const Agent = () => {
     );
 
     if (validResults.length === 0) {
-      toast({
-        title: "Invalid data",
-        description: "Please enter at least one candidate with votes.",
-        variant: "destructive",
-      });
+      toast.error("Please enter at least one candidate with votes.");
       return;
     }
 
@@ -185,21 +165,13 @@ const Agent = () => {
       setExtractedResults([]);
       setIsEditing(false);
       
-      toast({
-        title: "Success!",
-        description: "Results submitted successfully. The admin dashboard has been updated with your data.",
-        variant: "default",
-      });
+      toast.success("Results submitted successfully. The admin dashboard has been updated with your data.");
       
       // Refresh available stations
       fetchStations();
     } catch (error) {
       console.error("Submission error:", error);
-      toast({
-        title: "Submission failed",
-        description: "There was an error submitting the results.",
-        variant: "destructive",
-      });
+      toast.error("There was an error submitting the results.");
     } finally {
       setIsSubmitting(false);
     }
