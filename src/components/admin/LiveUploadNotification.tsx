@@ -24,7 +24,7 @@ const LiveUploadNotification = () => {
         const stationName = stationData?.name || 'Unknown station';
         
         // Show notification
-        toast((t) => (
+        toast(
           <div className="flex items-center gap-3">
             <Bell className="h-5 w-5 text-blue-500" />
             <div className="flex-1">
@@ -33,18 +33,18 @@ const LiveUploadNotification = () => {
                 {stationName} has submitted new results
               </p>
             </div>
-          </div>
-        ), {
-          duration: 5000,
-          action: {
-            label: "View",
-            onClick: () => {
-              // Redirect to admin dashboard or direct to the upload
-              // This is a placeholder functionality
-              window.location.href = '/admin';
+          </div>,
+          {
+            duration: 5000,
+            action: {
+              label: "View",
+              onClick: () => {
+                // Redirect to admin dashboard or direct to the upload
+                window.location.href = '/admin';
+              }
             }
           }
-        });
+        );
       })
       .subscribe();
       

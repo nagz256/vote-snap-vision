@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
 import UploadedImages from "@/components/admin/UploadedImages";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
+import { supabase } from "@/integrations/supabase/client";
 
 const Admin = () => {
   const [username, setUsername] = useState("");
@@ -17,13 +18,19 @@ const Admin = () => {
   const [loginError, setLoginError] = useState("");
   const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
   const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
+  const [stationResults, setStationResults] = useState<Array<{
+    id: string;
+    station: {name: string, district: string};
+    results: Array<{candidateName: string, votes: number}>;
+  }>>([]);
   
-  const { isAdmin, login, logout } = useVoteSnap();
+  const { isAdmin, login, logout, uploads } = useVoteSnap();
 
   // Fetch total votes data when admin logs in
   useEffect(() => {
     if (isAdmin) {
       fetchTotalVotes();
+      fetchStationResults();
     }
   }, [isAdmin]);
 
@@ -56,6 +63,55 @@ const Admin = () => {
       setPercentageData(percentData);
     } catch (error) {
       console.error("Error fetching vote data:", error);
+    }
+  };
+  
+  const fetchStationResults = async () => {
+    try {
+      const { data: uploadsData, error } = await supabase
+        .from('uploads')
+        .select(`
+          id,
+          station_id,
+          polling_stations (
+            name,
+            district
+          )
+        `);
+      
+      if (error) throw error;
+      
+      const stationResultsData = await Promise.all(
+        uploadsData.map(async (upload) => {
+          const { data: resultsData } = await supabase
+            .from('results')
+            .select(`
+              votes,
+              candidates (
+                name
+              )
+            `)
+            .eq('upload_id', upload.id);
+            
+          const formattedResults = resultsData?.map(result => ({
+            candidateName: result.candidates.name,
+            votes: result.votes
+          })) || [];
+          
+          return {
+            id: upload.id,
+            station: {
+              name: upload.polling_stations?.name || "Unknown",
+              district: upload.polling_stations?.district || "Unknown"
+            },
+            results: formattedResults
+          };
+        })
+      );
+      
+      setStationResults(stationResultsData);
+    } catch (error) {
+      console.error("Error fetching station results:", error);
     }
   };
 
@@ -220,8 +276,7 @@ const Admin = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {/* We'll use the existing code for this section */}
-              {uploads.map(upload => (
+              {stationResults.map(upload => (
                 <Card key={upload.id} className="bg-white/40 border-white/30">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base">{upload.station?.name}</CardTitle>
