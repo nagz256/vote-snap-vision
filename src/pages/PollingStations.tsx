@@ -55,13 +55,14 @@ const PollingStations = () => {
       }
       
       if (isEditing && currentId) {
-        // Update existing station using RPC function
-        const { data, error } = await supabase
-          .rpc('update_polling_station', {
-            p_id: currentId,
-            p_name: formData.name, 
-            p_district: formData.district
-          });
+        // Update existing station directly
+        const { error } = await supabase
+          .from('polling_stations')
+          .update({ 
+            name: formData.name, 
+            district: formData.district 
+          })
+          .eq('id', currentId);
 
         if (error) {
           console.error("Update error details:", error);
@@ -69,12 +70,13 @@ const PollingStations = () => {
         }
         toast.success("Polling station updated successfully");
       } else {
-        // Create new station using RPC function
-        const { data, error } = await supabase
-          .rpc('create_polling_station', {
-            p_name: formData.name, 
-            p_district: formData.district
-          });
+        // Create new station directly
+        const { error } = await supabase
+          .from('polling_stations')
+          .insert([{ 
+            name: formData.name, 
+            district: formData.district 
+          }]);
 
         if (error) {
           console.error("Insert error details:", error);
@@ -126,9 +128,11 @@ const PollingStations = () => {
         return toast.error("Cannot delete a station with uploaded results");
       }
       
-      // Delete using RPC function
+      // Delete directly
       const { error } = await supabase
-        .rpc('delete_polling_station', { p_id: id });
+        .from('polling_stations')
+        .delete()
+        .eq('id', id);
         
       if (error) throw error;
       toast.success("Polling station deleted successfully");
