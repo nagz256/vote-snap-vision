@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,22 +5,22 @@ import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Tables } from "@/integrations/supabase/types";
 
-interface StationFormData {
-  name: string;
-  district: string;
-}
+type PollingStation = Tables<'polling_stations'>;
 
 const PollingStations = () => {
-  const [stations, setStations] = useState<any[]>([]);
-  const [formData, setFormData] = useState<StationFormData>({ name: "", district: "" });
+  const [stations, setStations] = useState<PollingStation[]>([]);
+  const [formData, setFormData] = useState<Omit<PollingStation, 'id' | 'created_at'>>({ 
+    name: "", 
+    district: "" 
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { isAdmin, refreshAvailableStations } = useVoteSnap();
 
-  // Fetch all polling stations
   const fetchStations = async () => {
     try {
       const { data, error } = await supabase
@@ -55,7 +54,6 @@ const PollingStations = () => {
       }
       
       if (isEditing && currentId) {
-        // Update existing station directly
         const { error } = await supabase
           .from('polling_stations')
           .update({ 
@@ -70,7 +68,6 @@ const PollingStations = () => {
         }
         toast.success("Polling station updated successfully");
       } else {
-        // Create new station directly
         const { error } = await supabase
           .from('polling_stations')
           .insert([{ 
@@ -85,15 +82,12 @@ const PollingStations = () => {
         toast.success("Polling station added successfully");
       }
       
-      // Reset form and refresh data
       setFormData({ name: "", district: "" });
       setIsEditing(false);
       setCurrentId(null);
       
-      // Refresh data in both components
       await fetchStations();
       
-      // Refresh available stations in the context to update agent view
       await refreshAvailableStations();
     } catch (error: any) {
       console.error("Error saving polling station:", error);
@@ -103,7 +97,7 @@ const PollingStations = () => {
     }
   };
 
-  const handleEdit = (station: any) => {
+  const handleEdit = (station: PollingStation) => {
     setFormData({
       name: station.name,
       district: station.district
@@ -116,7 +110,6 @@ const PollingStations = () => {
     if (!window.confirm("Are you sure you want to delete this polling station?")) return;
     
     try {
-      // Check if this station has any uploads
       const { data: uploads, error: checkError } = await supabase
         .from('uploads')
         .select('id')
@@ -128,7 +121,6 @@ const PollingStations = () => {
         return toast.error("Cannot delete a station with uploaded results");
       }
       
-      // Delete directly
       const { error } = await supabase
         .from('polling_stations')
         .delete()
@@ -138,7 +130,6 @@ const PollingStations = () => {
       toast.success("Polling station deleted successfully");
       await fetchStations();
       
-      // Refresh available stations in the context to update agent view
       await refreshAvailableStations();
     } catch (error: any) {
       console.error("Error deleting polling station:", error);
@@ -146,7 +137,6 @@ const PollingStations = () => {
     }
   };
 
-  // Render access denied message for non-admin users
   if (!isAdmin) {
     return (
       <div className="py-10 text-center">
