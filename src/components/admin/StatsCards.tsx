@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useState, useEffect } from "react";
@@ -21,10 +22,14 @@ const StatsCards = () => {
           .from('polling_stations')
           .select('*', { count: 'exact', head: true });
         
-        // Get uploaded stations
-        const { count: uploadedStations } = await supabase
+        // Get uploaded stations (distinct station IDs)
+        const { data: uploadedStationsData } = await supabase
           .from('uploads')
-          .select('*', { count: 'exact', head: true });
+          .select('station_id');
+          
+        // Count unique station IDs
+        const uniqueStationIds = new Set(uploadedStationsData?.map(u => u.station_id));
+        const uploadedStations = uniqueStationIds.size;
         
         // Get results with gender counts
         const { data: resultsData } = await supabase
@@ -75,19 +80,29 @@ const StatsCards = () => {
     
     // Set up a subscription to keep stats fresh
     const channel = supabase
-      .channel('table-db-changes')
+      .channel('stats-db-changes')
       .on('postgres_changes', { 
-        event: '*', 
+        event: 'INSERT', 
         schema: 'public', 
         table: 'results' 
       }, () => {
+        console.log("Results table updated, refreshing stats");
+        fetchStats();
+      })
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'uploads' 
+      }, () => {
+        console.log("Uploads table updated, refreshing stats");
         fetchStats();
       })
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
-        table: 'uploads' 
+        table: 'polling_stations' 
       }, () => {
+        console.log("Polling stations table updated, refreshing stats");
         fetchStats();
       })
       .subscribe();

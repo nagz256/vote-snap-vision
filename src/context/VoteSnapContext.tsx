@@ -10,6 +10,7 @@ interface VoteSnapContextType {
   logout: () => void;
   addUpload: (upload: Omit<Upload, "id" | "timestamp">, results: ExtractedResult[]) => Promise<void>;
   getAvailableStations: () => Promise<any[]>;
+  refreshAvailableStations: () => Promise<void>;
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<ExtractedResult[]>;
   getVotesByGender: () => Promise<{ male: number; female: number; total: number }>;
@@ -20,6 +21,7 @@ const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined
 export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [availableStations, setAvailableStations] = useState<any[]>([]);
 
   // Fetch uploads when admin logs in
   useEffect(() => {
@@ -79,7 +81,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         })
       );
 
-      setUploads(uploadsWithResults);
+      setUploads(uploadsWithResults as Upload[]);
     } catch (error) {
       console.error("Error in fetchUploads:", error);
     }
@@ -97,45 +99,58 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     setIsAdmin(false);
   };
 
+  const refreshAvailableStations = async () => {
+    const stations = await getAvailableStations();
+    setAvailableStations(stations);
+    return stations;
+  };
+
   const addUpload = async (
     uploadData: { stationId: string; imagePath: string },
     results: ExtractedResult[]
   ) => {
-    const { data: upload, error: uploadError } = await supabase
-      .from('uploads')
-      .insert([{
-        station_id: uploadData.stationId,
-        image_path: uploadData.imagePath,
-      }])
-      .select()
-      .single();
-
-    if (uploadError) throw uploadError;
-
-    // Insert or get candidates
-    for (const result of results) {
-      // Try to insert candidate, ignore if already exists
-      const { data: candidate } = await supabase
-        .from('candidates')
-        .upsert([{ name: result.candidateName }], { onConflict: 'name' })
+    try {
+      const { data: upload, error: uploadError } = await supabase
+        .from('uploads')
+        .insert([{
+          station_id: uploadData.stationId,
+          image_path: uploadData.imagePath,
+        }])
         .select()
         .single();
 
-      if (candidate) {
-        // Insert results
-        await supabase
-          .from('results')
-          .insert([{
-            upload_id: upload.id,
-            candidate_id: candidate.id,
-            votes: result.votes,
-          }]);
-      }
-    }
+      if (uploadError) throw uploadError;
 
-    // Refresh uploads if admin is logged in
-    if (isAdmin) {
-      fetchUploads();
+      // Insert or get candidates
+      for (const result of results) {
+        // Try to insert candidate, ignore if already exists
+        const { data: candidate } = await supabase
+          .from('candidates')
+          .upsert([{ name: result.candidateName }], { onConflict: 'name' })
+          .select()
+          .single();
+
+        if (candidate) {
+          // Insert results
+          await supabase
+            .from('results')
+            .insert([{
+              upload_id: upload.id,
+              candidate_id: candidate.id,
+              votes: result.votes,
+            }]);
+        }
+      }
+
+      // Refresh uploads if admin is logged in
+      if (isAdmin) {
+        fetchUploads();
+      }
+
+      return upload;
+    } catch (error) {
+      console.error("Error adding upload:", error);
+      throw error;
     }
   };
 
@@ -236,12 +251,21 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const processDRForm = async (imageUrl: string): Promise<ExtractedResult[]> => {
-    const { data, error } = await supabase.functions.invoke('process-dr-form', {
-      body: { imageUrl },
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke('process-dr-form', {
+        body: { imageUrl },
+      });
 
-    if (error) throw error;
-    return data.results;
+      if (error) {
+        console.error("Error processing DR form:", error);
+        throw error;
+      }
+      
+      return data.results || [];
+    } catch (error) {
+      console.error("Error in processDRForm:", error);
+      throw error;
+    }
   };
 
   return (
@@ -253,6 +277,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         logout,
         addUpload,
         getAvailableStations,
+        refreshAvailableStations,
         getTotalVotes,
         processDRForm,
         getVotesByGender

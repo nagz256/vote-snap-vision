@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowDown } from "lucide-react";
 
 interface StationFormData {
   name: string;
@@ -19,7 +19,7 @@ const PollingStations = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { isAdmin } = useVoteSnap();
+  const { isAdmin, refreshAvailableStations } = useVoteSnap();
 
   // Fetch all polling stations
   const fetchStations = async () => {
@@ -71,7 +71,10 @@ const PollingStations = () => {
       setFormData({ name: "", district: "" });
       setIsEditing(false);
       setCurrentId(null);
-      fetchStations();
+      await fetchStations();
+      
+      // Refresh available stations in the context to update agent view
+      await refreshAvailableStations();
     } catch (error) {
       console.error("Error saving polling station:", error);
       toast.error("Failed to save polling station");
@@ -110,7 +113,10 @@ const PollingStations = () => {
         
       if (error) throw error;
       toast.success("Polling station deleted successfully");
-      fetchStations();
+      await fetchStations();
+      
+      // Refresh available stations in the context to update agent view
+      await refreshAvailableStations();
     } catch (error) {
       console.error("Error deleting polling station:", error);
       toast.error("Failed to delete polling station");

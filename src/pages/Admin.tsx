@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { Eye, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
 import UploadedImages from "@/components/admin/UploadedImages";
@@ -24,18 +24,45 @@ const Admin = () => {
     results: Array<{candidateName: string, votes: number}>;
   }>>([]);
   
-  const { isAdmin, login, logout, uploads } = useVoteSnap();
+  const { isAdmin, login, logout } = useVoteSnap();
 
-  // Fetch total votes data when admin logs in
+  // Fetch data when admin logs in
   useEffect(() => {
     if (isAdmin) {
       fetchTotalVotes();
       fetchStationResults();
+
+      // Set up subscription to update data on realtime changes
+      const channel = supabase
+        .channel('admin-dashboard-updates')
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'results' 
+        }, () => {
+          console.log("New results uploaded, refreshing data");
+          fetchTotalVotes();
+          fetchStationResults();
+        })
+        .on('postgres_changes', { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'uploads' 
+        }, () => {
+          console.log("New upload detected, refreshing data");
+          fetchStationResults();
+        })
+        .subscribe();
+        
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [isAdmin]);
 
   const fetchTotalVotes = async () => {
     try {
+      console.log("Fetching total votes data...");
       const { data: resultsData } = await supabase
         .from('results')
         .select(`
@@ -61,6 +88,8 @@ const Admin = () => {
         percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
       }));
       setPercentageData(percentData);
+      
+      console.log("Total votes data fetched:", voteData);
     } catch (error) {
       console.error("Error fetching vote data:", error);
     }
@@ -68,6 +97,7 @@ const Admin = () => {
   
   const fetchStationResults = async () => {
     try {
+      console.log("Fetching station results...");
       const { data: uploadsData, error } = await supabase
         .from('uploads')
         .select(`
@@ -110,6 +140,7 @@ const Admin = () => {
       );
       
       setStationResults(stationResultsData);
+      console.log("Station results fetched:", stationResultsData);
     } catch (error) {
       console.error("Error fetching station results:", error);
     }

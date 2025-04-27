@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useVoteSnap } from "@/context/VoteSnapContext";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "@/components/ui/sonner";
 import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
 
 interface FormData {
@@ -100,15 +100,24 @@ const Agent = () => {
 
     setIsProcessing(true);
     try {
+      console.log("Processing image...");
       const results = await processDRForm(formData.previewUrl);
+      console.log("OCR Results:", results);
       setExtractedResults(results);
       setIsEditing(true);
     } catch (error) {
+      console.error("Error processing image:", error);
       toast({
         title: "Error processing image",
-        description: "There was an error extracting data from the image.",
+        description: "There was an error extracting data from the image. Please try again or enter results manually.",
         variant: "destructive",
       });
+      // If OCR fails, allow manual data entry with empty results
+      setExtractedResults([
+        { candidateName: "", votes: 0 },
+        { candidateName: "", votes: 0 }
+      ]);
+      setIsEditing(true);
     } finally {
       setIsProcessing(false);
     }
@@ -124,11 +133,34 @@ const Agent = () => {
     setExtractedResults(updatedResults);
   };
 
+  const addCandidateField = () => {
+    setExtractedResults([...extractedResults, { candidateName: "", votes: 0 }]);
+  };
+
+  const removeCandidateField = (index: number) => {
+    const updatedResults = extractedResults.filter((_, i) => i !== index);
+    setExtractedResults(updatedResults);
+  };
+
   const handleSubmit = async () => {
     if (!formData.stationId || !formData.previewUrl || extractedResults.length === 0) {
       toast({
         title: "Missing information",
         description: "Please complete all steps before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Filter out empty candidates
+    const validResults = extractedResults.filter(
+      result => result.candidateName.trim() !== "" && result.votes >= 0
+    );
+
+    if (validResults.length === 0) {
+      toast({
+        title: "Invalid data",
+        description: "Please enter at least one candidate with votes.",
         variant: "destructive",
       });
       return;
@@ -141,7 +173,7 @@ const Agent = () => {
           stationId: formData.stationId,
           imagePath: formData.previewUrl,
         },
-        extractedResults
+        validResults
       );
       
       // Reset form
@@ -155,7 +187,7 @@ const Agent = () => {
       
       toast({
         title: "Success!",
-        description: "Results submitted successfully.",
+        description: "Results submitted successfully. The admin dashboard has been updated with your data.",
         variant: "default",
       });
       
@@ -295,6 +327,7 @@ const Agent = () => {
                     <tr className="bg-purple/20">
                       <th className="py-2 px-4 text-left">Candidate</th>
                       <th className="py-2 px-4 text-right">Votes</th>
+                      {isEditing && <th className="py-2 px-2 w-10"></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -306,9 +339,10 @@ const Agent = () => {
                               className="glass-input"
                               value={result.candidateName}
                               onChange={(e) => updateResult(index, "candidateName", e.target.value)}
+                              placeholder="Candidate name"
                             />
                           ) : (
-                            result.candidateName
+                            result.candidateName || <span className="text-muted-foreground">Unnamed candidate</span>
                           )}
                         </td>
                         <td className="py-3 px-4">
@@ -316,6 +350,7 @@ const Agent = () => {
                             <Input 
                               className="glass-input text-right"
                               type="number"
+                              min="0"
                               value={result.votes}
                               onChange={(e) => updateResult(index, "votes", e.target.value)}
                             />
@@ -323,10 +358,38 @@ const Agent = () => {
                             <span className="block text-right">{result.votes}</span>
                           )}
                         </td>
+                        {isEditing && (
+                          <td className="py-3 px-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => removeCandidateField(index)}
+                            >
+                              <span className="sr-only">Remove</span>
+                              ×
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                
+                {isEditing && (
+                  <div className="p-4 border-t border-white/30">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={addCandidateField}
+                    >
+                      + Add Candidate
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}
