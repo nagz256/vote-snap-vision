@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
-import { toast } from "@/components/ui/sonner";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Plus, Pencil, Trash2, ArrowDown } from "lucide-react";
 
@@ -48,11 +48,20 @@ const PollingStations = () => {
     setIsLoading(true);
     
     try {
+      if (!formData.name || !formData.district) {
+        toast.error("Please complete all fields");
+        setIsLoading(false);
+        return;
+      }
+      
       if (isEditing && currentId) {
         // Update existing station
         const { error } = await supabase
           .from('polling_stations')
-          .update({ name: formData.name, district: formData.district })
+          .update({ 
+            name: formData.name, 
+            district: formData.district 
+          })
           .eq('id', currentId);
 
         if (error) throw error;
@@ -61,9 +70,15 @@ const PollingStations = () => {
         // Create new station
         const { error } = await supabase
           .from('polling_stations')
-          .insert([{ name: formData.name, district: formData.district }]);
+          .insert([{ 
+            name: formData.name, 
+            district: formData.district 
+          }]);
 
-        if (error) throw error;
+        if (error) {
+          console.error("Insert error details:", error);
+          throw error;
+        }
         toast.success("Polling station added successfully");
       }
       
@@ -71,13 +86,15 @@ const PollingStations = () => {
       setFormData({ name: "", district: "" });
       setIsEditing(false);
       setCurrentId(null);
+      
+      // Refresh data in both components
       await fetchStations();
       
       // Refresh available stations in the context to update agent view
       await refreshAvailableStations();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving polling station:", error);
-      toast.error("Failed to save polling station");
+      toast.error(`Failed to save polling station: ${error.message || "Unknown error"}`);
     } finally {
       setIsLoading(false);
     }
@@ -97,10 +114,12 @@ const PollingStations = () => {
     
     try {
       // Check if this station has any uploads
-      const { data: uploads } = await supabase
+      const { data: uploads, error: checkError } = await supabase
         .from('uploads')
         .select('id')
         .eq('station_id', id);
+      
+      if (checkError) throw checkError;
       
       if (uploads && uploads.length > 0) {
         return toast.error("Cannot delete a station with uploaded results");
@@ -117,12 +136,13 @@ const PollingStations = () => {
       
       // Refresh available stations in the context to update agent view
       await refreshAvailableStations();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting polling station:", error);
-      toast.error("Failed to delete polling station");
+      toast.error(`Failed to delete polling station: ${error.message || "Unknown error"}`);
     }
   };
 
+  // Render access denied message for non-admin users
   if (!isAdmin) {
     return (
       <div className="py-10 text-center">

@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
 import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface FormData {
   stationId: string | null;
@@ -34,6 +35,7 @@ const Agent = () => {
   const [extractedResults, setExtractedResults] = useState<{candidateName: string; votes: number}[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ocrCompleted, setOcrCompleted] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +48,7 @@ const Agent = () => {
     try {
       setIsLoadingStations(true);
       const availableStations = await getAvailableStations();
+      console.log("Available stations:", availableStations);
       setStations(availableStations);
     } catch (error) {
       console.error("Error fetching stations:", error);
@@ -79,6 +82,7 @@ const Agent = () => {
           previewUrl: reader.result as string,
         });
         setExtractedResults([]);
+        setOcrCompleted(false);
       };
       reader.readAsDataURL(file);
     }
@@ -97,6 +101,8 @@ const Agent = () => {
       console.log("OCR Results:", results);
       setExtractedResults(results);
       setIsEditing(true);
+      setOcrCompleted(true);
+      toast.success("Image processed successfully! Please review the extracted data.");
     } catch (error) {
       console.error("Error processing image:", error);
       toast.error("There was an error extracting data from the image. Please try again or enter results manually.");
@@ -164,6 +170,7 @@ const Agent = () => {
       });
       setExtractedResults([]);
       setIsEditing(false);
+      setOcrCompleted(false);
       
       toast.success("Results submitted successfully. The admin dashboard has been updated with your data.");
       
@@ -257,7 +264,7 @@ const Agent = () => {
               <h2 className="text-lg font-medium mb-3">Step 3: Extract Results</h2>
               <Button 
                 className="glass-button w-full" 
-                disabled={isProcessing || extractedResults.length > 0}
+                disabled={isProcessing || ocrCompleted}
                 onClick={processImage}
               >
                 {isProcessing ? (
@@ -265,7 +272,7 @@ const Agent = () => {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing...
                   </>
-                ) : extractedResults.length > 0 ? (
+                ) : ocrCompleted ? (
                   <>
                     <Check className="mr-2 h-4 w-4" />
                     Results Extracted
@@ -275,6 +282,30 @@ const Agent = () => {
                 )}
               </Button>
             </div>
+          )}
+          
+          {/* OCR Result Display */}
+          {ocrCompleted && extractedResults.length > 0 && (
+            <Card className="bg-purple-50/30 border-purple-200/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">OCR Scan Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-2">
+                  The system has automatically extracted the following data. Please review and edit if necessary.
+                </p>
+                <div className="bg-white/60 rounded-md p-3">
+                  {extractedResults.map((result, idx) => (
+                    <div key={idx} className="flex justify-between items-center mb-1 text-sm">
+                      <span className="font-medium">{result.candidateName || "Unknown Candidate"}</span>
+                      <span className="bg-purple-100 px-2 py-0.5 rounded">
+                        {result.votes} votes
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
           
           {/* Step 4: Edit Results */}

@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -23,7 +22,6 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [availableStations, setAvailableStations] = useState<any[]>([]);
 
-  // Fetch uploads when admin logs in
   useEffect(() => {
     if (isAdmin) {
       fetchUploads();
@@ -51,7 +49,6 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // For each upload, fetch its results
       const uploadsWithResults = await Promise.all(
         uploadsData.map(async (upload) => {
           const { data: resultsData } = await supabase
@@ -100,9 +97,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshAvailableStations = async () => {
-    const stations = await getAvailableStations();
-    setAvailableStations(stations);
-    // Return void to match the type definition
+    try {
+      const stations = await getAvailableStations();
+      setAvailableStations(stations);
+    } catch (error) {
+      console.error("Error refreshing available stations:", error);
+    }
   };
 
   const addUpload = async (
@@ -110,6 +110,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     results: ExtractedResult[]
   ) => {
     try {
+      console.log("Adding upload with data:", uploadData);
       const { data: upload, error: uploadError } = await supabase
         .from('uploads')
         .insert([{
@@ -119,35 +120,46 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         .select()
         .single();
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error("Upload insertion error:", uploadError);
+        throw uploadError;
+      }
 
-      // Insert or get candidates
+      console.log("Upload created:", upload);
+
       for (const result of results) {
-        // Try to insert candidate, ignore if already exists
-        const { data: candidate } = await supabase
+        console.log("Processing result for candidate:", result.candidateName);
+        const { data: candidate, error: candidateError } = await supabase
           .from('candidates')
           .upsert([{ name: result.candidateName }], { onConflict: 'name' })
           .select()
           .single();
 
+        if (candidateError) {
+          console.error("Candidate upsert error:", candidateError);
+          throw candidateError;
+        }
+
         if (candidate) {
-          // Insert results
-          await supabase
+          console.log("Inserting result for candidate:", candidate.id, "votes:", result.votes);
+          const { error: resultError } = await supabase
             .from('results')
             .insert([{
               upload_id: upload.id,
               candidate_id: candidate.id,
               votes: result.votes,
             }]);
+
+          if (resultError) {
+            console.error("Result insertion error:", resultError);
+            throw resultError;
+          }
         }
       }
 
-      // Refresh uploads if admin is logged in
       if (isAdmin) {
-        fetchUploads();
+        await fetchUploads();
       }
-
-      // Don't return anything to match void return type
     } catch (error) {
       console.error("Error adding upload:", error);
       throw error;
@@ -156,28 +168,51 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getAvailableStations = async () => {
     try {
-      const { data: submittedStations } = await supabase
+      console.log("Fetching available stations");
+      const { data: submittedStations, error: submittedError } = await supabase
         .from('uploads')
         .select('station_id');
 
-      // Handle case where no stations have been submitted yet
+      if (submittedError) {
+        console.error("Error fetching submitted stations:", submittedError);
+        throw submittedError;
+      }
+
       if (!submittedStations || submittedStations.length === 0) {
-        const { data: allStations } = await supabase
+        console.log("No submitted stations found, fetching all stations");
+        const { data: allStations, error: allError } = await supabase
           .from('polling_stations')
           .select('*');
+          
+        if (allError) {
+          console.error("Error fetching all stations:", allError);
+          throw allError;
+        }
+        
+        console.log("Available stations:", allStations);
         return allStations || [];
       }
 
       const submittedIds = submittedStations.map(s => s.station_id);
+      console.log("Submitted station IDs:", submittedIds);
 
-      const { data: stations } = await supabase
-        .from('polling_stations')
-        .select('*')
-        .not('id', 'in', `(${submittedIds.join(',')})`);
+      const query = supabase.from('polling_stations').select('*');
+      
+      if (submittedIds.length > 0) {
+        query.not('id', 'in', `(${submittedIds.join(',')})`);
+      }
 
+      const { data: stations, error: stationsError } = await query;
+      
+      if (stationsError) {
+        console.error("Error fetching available stations:", stationsError);
+        throw stationsError;
+      }
+
+      console.log("Available stations after filtering:", stations);
       return stations || [];
     } catch (error) {
-      console.error("Error fetching available stations:", error);
+      console.error("Error in getAvailableStations:", error);
       return [];
     }
   };
@@ -208,8 +243,6 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getVotesByGender = async () => {
     try {
-      // This is a simplified approach. In a real app, you'd have gender info in your database
-      // For demo purposes, we'll use a naming convention
       const { data: results } = await supabase
         .from('results')
         .select(`
@@ -224,15 +257,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       
       results?.forEach(result => {
         const candidateName = result.candidates?.name.toLowerCase() || "";
-        // Mock logic: names with 'john' or 'michael' are counted as male voters
         if (candidateName.includes('john') || candidateName.includes('michael')) {
           maleVotes += result.votes;
         } 
-        // Mock logic: names with 'jane' or 'emily' are counted as female voters
         else if (candidateName.includes('jane') || candidateName.includes('emily')) {
           femaleVotes += result.votes;
         }
-        // For other names, distribute evenly
         else {
           maleVotes += Math.round(result.votes / 2);
           femaleVotes += result.votes - Math.round(result.votes / 2);
