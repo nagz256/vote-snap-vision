@@ -21,119 +21,117 @@ serve(async (req) => {
 
     console.log("Processing image:", imageUrl.substring(0, 50) + "...");
 
-    // Call OCR.space API
-    const response = await fetch('https://api.ocr.space/parse/imageurl', {
-      method: 'POST',
-      headers: {
-        'apikey': Deno.env.get('OCR_SPACE_API_KEY') || '',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        url: imageUrl,
-        language: 'eng',
-        isOverlayRequired: 'false',
-        scale: 'true',
-        detectOrientation: 'true',
-      }),
-    })
+    // Enhanced OCR processing with multiple attempts and configurations
+    const ocrConfigs = [
+      { scale: 'true', detectOrientation: 'true', language: 'eng' },
+      { scale: 'true', detectOrientation: 'true', language: 'eng', OCREngine: '2' },
+      { preprocessParams: '{\"resize\":\"2000\"}', scale: 'true', language: 'eng' }
+    ];
 
-    const data = await response.json()
-    console.log("OCR response status:", response.status);
-    
-    if (!response.ok) {
-      console.error("OCR processing failed:", data);
-      throw new Error('OCR processing failed: ' + (data.ErrorMessage || 'Unknown error'))
+    let bestResult = null;
+    let maxConfidence = -1;
+
+    for (const config of ocrConfigs) {
+      try {
+        const response = await fetch('https://api.ocr.space/parse/imageurl', {
+          method: 'POST',
+          headers: {
+            'apikey': Deno.env.get('OCR_SPACE_API_KEY') || '',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            url: imageUrl,
+            ...config
+          }),
+        });
+
+        const data = await response.json();
+        console.log("OCR attempt response:", data);
+        
+        if (response.ok && data.ParsedResults?.[0]?.ParsedText) {
+          const confidence = data.ParsedResults[0].TextOverlay?.Lines?.length || 0;
+          if (confidence > maxConfidence) {
+            maxConfidence = confidence;
+            bestResult = data;
+          }
+        }
+      } catch (error) {
+        console.error("OCR attempt failed:", error);
+      }
     }
 
-    // Parse the OCR results to extract candidate names and votes
-    const lines = data.ParsedResults?.[0]?.ParsedText?.split('\n') || []
-    const results = []
+    if (!bestResult) {
+      throw new Error('OCR processing failed with all configurations');
+    }
+
+    // Enhanced parsing logic for better accuracy
+    const lines = bestResult.ParsedResults[0].ParsedText.split('\n');
+    console.log("Processing lines:", lines);
     
-    console.log("OCR extracted lines:", lines.length);
+    const results = [];
+    let currentCandidate = null;
     
-    // More robust parsing logic
     for (const line of lines) {
-      console.log("Processing line:", line);
-      
-      // Try multiple regex patterns to match different formats
-      let match = line.match(/([^:]+):\s*(\d+)\s*votes?/)
-      
-      if (!match) {
-        match = line.match(/([^0-9]+)(\d+)\s*votes?/)
-      }
-      
-      if (!match) {
-        // Try to find any name followed by numbers
-        match = line.match(/([a-zA-Z\s]+)[^\w]?(\d+)/)
-      }
-      
-      if (match) {
-        const candidateName = match[1].trim();
-        const votes = parseInt(match[2], 10);
-        
-        console.log(`Found candidate: "${candidateName}" with ${votes} votes`);
-        
-        // Only add if we have both a name and votes
-        if (candidateName && !isNaN(votes)) {
-          results.push({
-            candidateName,
-            votes
-          });
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      // Multiple regex patterns for different formats
+      const patterns = [
+        /([^:]+):\s*(\d+)\s*votes?/i,
+        /([^0-9]+)(\d+)\s*votes?/i,
+        /([a-zA-Z\s]+)[^\w]?(\d+)/,
+        /(\d+)\s*votes?\s*(?:for|to)?\s*([a-zA-Z\s]+)/i
+      ];
+
+      let matched = false;
+      for (const pattern of patterns) {
+        const match = trimmedLine.match(pattern);
+        if (match) {
+          const [candidateName, votes] = pattern === patterns[3] ? 
+            [match[2], match[1]] : [match[1], match[2]];
+          
+          if (candidateName && !isNaN(parseInt(votes))) {
+            results.push({
+              candidateName: candidateName.trim(),
+              votes: parseInt(votes)
+            });
+            matched = true;
+            break;
+          }
         }
       }
-    }
-    
-    // If we found no results via regex, try a more aggressive approach
-    if (results.length === 0) {
-      console.log("No results found via regex, trying alternative approach");
-      
-      let currentCandidate = null;
-      
-      for (const line of lines) {
-        const trimmedLine = line.trim();
+
+      if (!matched && trimmedLine.length > 3) {
+        const hasLetters = /[a-zA-Z]{3,}/.test(trimmedLine);
+        const hasNumbers = /\d+/.test(trimmedLine);
         
-        // Skip empty lines
-        if (!trimmedLine) continue;
-        
-        // Check if the line contains mostly letters (likely a name)
-        const letterCount = (trimmedLine.match(/[a-zA-Z]/g) || []).length;
-        const digitCount = (trimmedLine.match(/[0-9]/g) || []).length;
-        
-        if (letterCount > digitCount && letterCount > 3) {
+        if (hasLetters && !hasNumbers) {
           currentCandidate = trimmedLine;
-        } 
-        // If we have a current candidate and find a line with mostly digits
-        else if (currentCandidate && digitCount > 0 && digitCount > letterCount) {
-          // Extract the first number found
-          const voteMatch = trimmedLine.match(/\d+/);
-          if (voteMatch) {
-            const votes = parseInt(voteMatch[0], 10);
-            if (!isNaN(votes)) {
-              results.push({
-                candidateName: currentCandidate,
-                votes
-              });
-              currentCandidate = null;
-            }
+        } else if (currentCandidate && hasNumbers) {
+          const votes = parseInt(trimmedLine.match(/\d+/)?.[0] || '0');
+          if (votes > 0) {
+            results.push({
+              candidateName: currentCandidate.trim(),
+              votes
+            });
+            currentCandidate = null;
           }
         }
       }
     }
-    
-    console.log("Extracted results:", results);
 
+    console.log("Final extracted results:", results);
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    });
   } catch (error) {
     console.error("Error in process-dr-form:", error);
-    
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
-    )
+    );
   }
-})
+});

@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,6 @@ const Header = () => {
             <h1 className="text-xl font-bold text-foreground hidden md:block">VoteSnap</h1>
           </Link>
           
-          {/* Desktop navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <Link to="/" className={`font-medium text-sm transition-colors ${isActive('/') ? 'text-purple-dark' : 'text-foreground/70 hover:text-foreground'}`}>
               Home
@@ -34,9 +32,11 @@ const Header = () => {
             <Link to="/admin" className={`font-medium text-sm transition-colors ${isActive('/admin') ? 'text-purple-dark' : 'text-foreground/70 hover:text-foreground'}`}>
               Admin
             </Link>
+            <Link to="/uploads" className={`font-medium text-sm transition-colors ${isActive('/uploads') ? 'text-purple-dark' : 'text-foreground/70 hover:text-foreground'}`}>
+              Uploads
+            </Link>
           </nav>
           
-          {/* Mobile menu button */}
           <Button 
             variant="ghost" 
             size="icon" 
@@ -47,7 +47,6 @@ const Header = () => {
           </Button>
         </div>
         
-        {/* Mobile navigation */}
         {isMenuOpen && (
           <div className="md:hidden py-4 space-y-2">
             <Link 
@@ -70,6 +69,13 @@ const Header = () => {
               onClick={() => setIsMenuOpen(false)}
             >
               Admin
+            </Link>
+            <Link 
+              to="/uploads" 
+              className={`block py-2 px-4 rounded-lg transition-colors ${isActive('/uploads') ? 'bg-purple/20 font-medium' : 'hover:bg-white/30'}`}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              Uploads
             </Link>
           </div>
         )}

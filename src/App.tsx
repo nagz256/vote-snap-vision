@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +12,7 @@ import Agent from "./pages/Agent";
 import Admin from "./pages/Admin";
 import PollingStations from "./pages/PollingStations";
 import NotFound from "./pages/NotFound";
+import Uploads from "./pages/Uploads";
 import { supabase } from "@/integrations/supabase/client";
 
 // Fix for React Native compatibility
@@ -33,6 +33,7 @@ const App = () => (
               <Route path="/agent" element={<Agent />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/polling-stations" element={<PollingStations />} />
+              <Route path="/uploads" element={<Uploads />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
