@@ -87,18 +87,21 @@ export type Database = {
           image_path: string
           station_id: string
           timestamp: string
+          uploaded_to_storage: boolean | null
         }
         Insert: {
           id?: string
           image_path: string
           station_id: string
           timestamp?: string
+          uploaded_to_storage?: boolean | null
         }
         Update: {
           id?: string
           image_path?: string
           station_id?: string
           timestamp?: string
+          uploaded_to_storage?: boolean | null
         }
         Relationships: [
           {
@@ -106,6 +109,51 @@ export type Database = {
             columns: ["station_id"]
             isOneToOne: true
             referencedRelation: "polling_stations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voter_statistics: {
+        Row: {
+          female_voters: number
+          id: string
+          male_voters: number
+          station_id: string
+          total_voters: number
+          upload_id: string
+          wasted_ballots: number
+        }
+        Insert: {
+          female_voters?: number
+          id?: string
+          male_voters?: number
+          station_id: string
+          total_voters?: number
+          upload_id: string
+          wasted_ballots?: number
+        }
+        Update: {
+          female_voters?: number
+          id?: string
+          male_voters?: number
+          station_id?: string
+          total_voters?: number
+          upload_id?: string
+          wasted_ballots?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voter_statistics_station_id_fkey"
+            columns: ["station_id"]
+            isOneToOne: false
+            referencedRelation: "polling_stations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voter_statistics_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: true
+            referencedRelation: "uploads"
             referencedColumns: ["id"]
           },
         ]

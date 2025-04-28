@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useState, useEffect } from "react";
@@ -31,44 +30,31 @@ const StatsCards = () => {
         const uniqueStationIds = new Set(uploadedStationsData?.map(u => u.station_id));
         const uploadedStations = uniqueStationIds.size;
         
-        // Get results with gender counts
-        const { data: resultsData } = await supabase
-          .from('results')
+        // Get voter statistics from the new table
+        const { data: voterStats } = await supabase
+          .from('voter_statistics')
           .select(`
-            votes,
-            candidates (name)
+            male_voters,
+            female_voters,
+            total_voters
           `);
+          
+        let totalMale = 0;
+        let totalFemale = 0;
+        let totalVotes = 0;
         
-        let maleVoters = 0;
-        let femaleVoters = 0;
-        
-        if (resultsData) {
-          // This is a simplified approach. In a real app, you'd have gender info in your database
-          // For demo purposes, we'll assume candidates with even IDs are male and odd are female
-          resultsData.forEach(result => {
-            const candidateName = result.candidates?.name.toLowerCase() || "";
-            // Mock logic: names with 'john' or 'michael' are counted as male voters
-            if (candidateName.includes('john') || candidateName.includes('michael')) {
-              maleVoters += result.votes;
-            } 
-            // Mock logic: names with 'jane' or 'emily' are counted as female voters
-            else if (candidateName.includes('jane') || candidateName.includes('emily')) {
-              femaleVoters += result.votes;
-            }
-            // For other names, distribute evenly
-            else {
-              maleVoters += Math.round(result.votes / 2);
-              femaleVoters += result.votes - Math.round(result.votes / 2);
-            }
-          });
+        if (voterStats) {
+          totalMale = voterStats.reduce((sum, stat) => sum + stat.male_voters, 0);
+          totalFemale = voterStats.reduce((sum, stat) => sum + stat.female_voters, 0);
+          totalVotes = voterStats.reduce((sum, stat) => sum + stat.total_voters, 0);
         }
         
         setStats({
           totalStations: totalStations || 0,
           uploadedStations: uploadedStations || 0,
-          maleVoters,
-          femaleVoters,
-          totalVoters: maleVoters + femaleVoters
+          maleVoters: totalMale,
+          femaleVoters: totalFemale,
+          totalVoters: totalVotes
         });
         
       } catch (error) {
@@ -82,11 +68,11 @@ const StatsCards = () => {
     const channel = supabase
       .channel('stats-db-changes')
       .on('postgres_changes', { 
-        event: 'INSERT', 
+        event: '*', 
         schema: 'public', 
-        table: 'results' 
+        table: 'voter_statistics' 
       }, () => {
-        console.log("Results table updated, refreshing stats");
+        console.log("Voter statistics updated, refreshing stats");
         fetchStats();
       })
       .on('postgres_changes', { 

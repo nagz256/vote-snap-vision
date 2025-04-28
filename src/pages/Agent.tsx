@@ -1,4 +1,3 @@
-
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,11 +6,17 @@ import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
 import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import VoterStatistics from "@/components/VoterStatistics";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FormData {
   stationId: string | null;
   image: File | null;
   previewUrl: string;
+  maleVoters: number;
+  femaleVoters: number;
+  wastedBallots: number;
+  totalVoters: number;
 }
 
 interface PollingStation {
@@ -29,6 +34,10 @@ const Agent = () => {
     stationId: null,
     image: null,
     previewUrl: "",
+    maleVoters: 0,
+    femaleVoters: 0,
+    wastedBallots: 0,
+    totalVoters: 0
   });
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -39,6 +48,14 @@ const Agent = () => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Update total voters when individual counts change
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      totalVoters: prev.maleVoters + prev.femaleVoters + prev.wastedBallots
+    }));
+  }, [formData.maleVoters, formData.femaleVoters, formData.wastedBallots]);
+
   // Fetch available stations on component mount
   useEffect(() => {
     fetchStations();
@@ -48,7 +65,6 @@ const Agent = () => {
     try {
       setIsLoadingStations(true);
       const availableStations = await getAvailableStations();
-      console.log("Available stations:", availableStations);
       setStations(availableStations);
     } catch (error) {
       console.error("Error fetching stations:", error);
@@ -63,6 +79,13 @@ const Agent = () => {
       ...formData,
       stationId: value,
     });
+  };
+
+  const handleStatisticsUpdate = (field: string, value: number) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const triggerFileInput = () => {
@@ -106,7 +129,6 @@ const Agent = () => {
     } catch (error) {
       console.error("Error processing image:", error);
       toast.error("There was an error extracting data from the image. Please try again or enter results manually.");
-      // If OCR fails, allow manual data entry with empty results
       setExtractedResults([
         { candidateName: "", votes: 0 },
         { candidateName: "", votes: 0 }
@@ -142,41 +164,85 @@ const Agent = () => {
       return;
     }
 
-    // Filter out empty candidates
-    const validResults = extractedResults.filter(
-      result => result.candidateName.trim() !== "" && result.votes >= 0
-    );
-
-    if (validResults.length === 0) {
-      toast.error("Please enter at least one candidate with votes.");
+    // Validate voter statistics
+    if (formData.totalVoters === 0) {
+      toast.error("Please enter voter statistics before submitting.");
       return;
     }
 
+    // Filter out duplicate candidates (case-insensitive)
+    const uniqueResults = extractedResults.reduce((acc, current) => {
+      const lcName = current.candidateName.toLowerCase();
+      if (!acc.some(item => item.candidateName.toLowerCase() === lcName)) {
+        acc.push(current);
+      }
+      return acc;
+    }, [] as typeof extractedResults);
+
     setIsSubmitting(true);
     try {
-      await addUpload(
-        {
-          stationId: formData.stationId,
-          imagePath: formData.previewUrl,
-        },
-        validResults
-      );
+      // First, create the upload
+      const { data: uploadData, error: uploadError } = await supabase
+        .from('uploads')
+        .insert([{
+          station_id: formData.stationId,
+          image_path: formData.previewUrl,
+        }])
+        .select()
+        .single();
+
+      if (uploadError) throw uploadError;
+
+      // Add voter statistics
+      await supabase
+        .from('voter_statistics')
+        .insert([{
+          upload_id: uploadData.id,
+          station_id: formData.stationId,
+          male_voters: formData.maleVoters,
+          female_voters: formData.femaleVoters,
+          wasted_ballots: formData.wastedBallots,
+          total_voters: formData.totalVoters
+        }]);
+
+      // Add results with unique candidates
+      for (const result of uniqueResults) {
+        const { data: candidate } = await supabase
+          .from('candidates')
+          .insert([{ name: result.candidateName.toLowerCase() }])
+          .select()
+          .maybeSingle();
+
+        if (candidate) {
+          await supabase
+            .from('results')
+            .insert([{
+              upload_id: uploadData.id,
+              candidate_id: candidate.id,
+              votes: result.votes,
+            }]);
+        }
+      }
       
       // Reset form
       setFormData({
         stationId: null,
         image: null,
         previewUrl: "",
+        maleVoters: 0,
+        femaleVoters: 0,
+        wastedBallots: 0,
+        totalVoters: 0
       });
       setExtractedResults([]);
       setIsEditing(false);
       setOcrCompleted(false);
       
-      toast.success("Results submitted successfully. The admin dashboard has been updated with your data.");
+      toast.success("Results submitted successfully!");
       
       // Refresh available stations
       fetchStations();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Submission error:", error);
       toast.error("There was an error submitting the results.");
     } finally {
@@ -257,6 +323,20 @@ const Agent = () => {
               )}
             </div>
           </div>
+          
+          {/* Step 3: Enter Voter Statistics */}
+          {formData.previewUrl && !isProcessing && !ocrCompleted && (
+            <div>
+              <h2 className="text-lg font-medium mb-3">Step 3: Enter Voter Statistics</h2>
+              <VoterStatistics
+                maleVoters={formData.maleVoters}
+                femaleVoters={formData.femaleVoters}
+                wastedBallots={formData.wastedBallots}
+                totalVoters={formData.totalVoters}
+                onUpdate={handleStatisticsUpdate}
+              />
+            </div>
+          )}
           
           {/* Step 3: Process Image */}
           {formData.previewUrl && (
