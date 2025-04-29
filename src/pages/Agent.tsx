@@ -1,10 +1,11 @@
+
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
-import { Loader2, Check, Camera, Upload, Edit2 } from "lucide-react";
+import { Loader2, Check, Camera, Upload, Edit2, RefreshCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import VoterStatistics from "@/components/VoterStatistics";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +46,7 @@ const Agent = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ocrCompleted, setOcrCompleted] = useState(false);
+  const [isRetaking, setIsRetaking] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,6 +108,7 @@ const Agent = () => {
         });
         setExtractedResults([]);
         setOcrCompleted(false);
+        setIsRetaking(false);
       };
       reader.readAsDataURL(file);
     }
@@ -119,13 +122,24 @@ const Agent = () => {
 
     setIsProcessing(true);
     try {
-      console.log("Processing image...");
+      console.log("Processing image with Tesseract.js...");
       const results = await processDRForm(formData.previewUrl);
       console.log("OCR Results:", results);
-      setExtractedResults(results);
-      setIsEditing(true);
-      setOcrCompleted(true);
-      toast.success("Image processed successfully! Please review the extracted data.");
+      
+      if (results && results.length > 0) {
+        setExtractedResults(results);
+        setIsEditing(true);
+        setOcrCompleted(true);
+        toast.success("Image processed successfully! Please review the extracted data.");
+      } else {
+        toast.warning("No data could be extracted. Please try retaking the image or enter results manually.");
+        setExtractedResults([
+          { candidateName: "", votes: 0 },
+          { candidateName: "", votes: 0 }
+        ]);
+        setIsEditing(true);
+        setIsRetaking(true);
+      }
     } catch (error) {
       console.error("Error processing image:", error);
       toast.error("There was an error extracting data from the image. Please try again or enter results manually.");
@@ -134,9 +148,22 @@ const Agent = () => {
         { candidateName: "", votes: 0 }
       ]);
       setIsEditing(true);
+      setIsRetaking(true);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const retakeImage = () => {
+    setFormData(prev => ({
+      ...prev,
+      image: null,
+      previewUrl: ""
+    }));
+    setExtractedResults([]);
+    setOcrCompleted(false);
+    setIsRetaking(false);
+    triggerFileInput();
   };
 
   const updateResult = (index: number, field: "candidateName" | "votes", value: string | number) => {
@@ -170,14 +197,25 @@ const Agent = () => {
       return;
     }
 
+    // Filter out empty candidates
+    const validResults = extractedResults.filter(result => result.candidateName.trim() !== "");
+    
+    if (validResults.length === 0) {
+      toast.error("Please add at least one candidate with votes.");
+      return;
+    }
+
     // Filter out duplicate candidates (case-insensitive)
-    const uniqueResults = extractedResults.reduce((acc, current) => {
-      const lcName = current.candidateName.toLowerCase();
-      if (!acc.some(item => item.candidateName.toLowerCase() === lcName)) {
-        acc.push(current);
+    const uniqueResultsMap = new Map<string, {candidateName: string; votes: number}>();
+    
+    for (const result of validResults) {
+      const lcName = result.candidateName.toLowerCase();
+      if (!uniqueResultsMap.has(lcName)) {
+        uniqueResultsMap.set(lcName, result);
       }
-      return acc;
-    }, [] as typeof extractedResults);
+    }
+    
+    const uniqueResults = Array.from(uniqueResultsMap.values());
 
     setIsSubmitting(true);
     try {
@@ -311,13 +349,23 @@ const Agent = () => {
               </div>
               
               {formData.previewUrl && (
-                <div className="mt-4">
+                <div className="mt-4 relative">
                   <div className="glass-container p-2">
                     <img
                       src={formData.previewUrl}
                       alt="Preview"
                       className="max-h-80 mx-auto rounded-lg"
                     />
+                    {isRetaking && (
+                      <Button 
+                        className="absolute top-4 right-4 bg-white/80 text-black hover:bg-white"
+                        size="sm"
+                        onClick={retakeImage}
+                      >
+                        <RefreshCcw size={16} className="mr-2" />
+                        Retake
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -350,7 +398,7 @@ const Agent = () => {
                 {isProcessing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    Processing with Tesseract OCR...
                   </>
                 ) : ocrCompleted ? (
                   <>

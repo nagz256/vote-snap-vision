@@ -1,5 +1,6 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createWorker } from 'https://esm.sh/tesseract.js@5.0.5'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,106 +20,99 @@ serve(async (req) => {
       throw new Error('Image URL is required')
     }
 
-    console.log("Processing image:", imageUrl.substring(0, 50) + "...");
+    console.log("Processing image with Tesseract.js:", imageUrl.substring(0, 50) + "...");
 
-    // Enhanced OCR processing with multiple attempts and configurations
-    const ocrConfigs = [
-      { scale: 'true', detectOrientation: 'true', language: 'eng' },
-      { scale: 'true', detectOrientation: 'true', language: 'eng', OCREngine: '2' },
-      { preprocessParams: '{\"resize\":\"2000\"}', scale: 'true', language: 'eng' }
-    ];
-
-    let bestResult = null;
-    let maxConfidence = -1;
-
-    for (const config of ocrConfigs) {
-      try {
-        const response = await fetch('https://api.ocr.space/parse/imageurl', {
-          method: 'POST',
-          headers: {
-            'apikey': Deno.env.get('OCR_SPACE_API_KEY') || '',
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({
-            url: imageUrl,
-            ...config
-          }),
-        });
-
-        const data = await response.json();
-        console.log("OCR attempt response:", data);
-        
-        if (response.ok && data.ParsedResults?.[0]?.ParsedText) {
-          const confidence = data.ParsedResults[0].TextOverlay?.Lines?.length || 0;
-          if (confidence > maxConfidence) {
-            maxConfidence = confidence;
-            bestResult = data;
-          }
-        }
-      } catch (error) {
-        console.error("OCR attempt failed:", error);
-      }
+    // Fetch the image data
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
     }
-
-    if (!bestResult) {
-      throw new Error('OCR processing failed with all configurations');
-    }
-
-    // Enhanced parsing logic for better accuracy
-    const lines = bestResult.ParsedResults[0].ParsedText.split('\n');
-    console.log("Processing lines:", lines);
     
+    const imageBlob = await imageResponse.blob();
+
+    // Initialize Tesseract worker
+    const worker = await createWorker('eng');
+    
+    // Configure worker settings for better results
+    await worker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:., ',
+      preserve_interword_spaces: '1',
+    });
+
+    console.log("Recognizing text from image...");
+    
+    // Perform OCR on the image
+    const { data } = await worker.recognize(imageBlob);
+    
+    console.log("OCR completed, processing results...");
+    console.log("Raw text:", data.text);
+    
+    // Parse results to extract candidate names and vote counts
+    const lines = data.text.split('\n');
     const results = [];
-    let currentCandidate = null;
     
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
-
-      // Multiple regex patterns for different formats
-      const patterns = [
-        /([^:]+):\s*(\d+)\s*votes?/i,
-        /([^0-9]+)(\d+)\s*votes?/i,
-        /([a-zA-Z\s]+)[^\w]?(\d+)/,
-        /(\d+)\s*votes?\s*(?:for|to)?\s*([a-zA-Z\s]+)/i
-      ];
-
-      let matched = false;
-      for (const pattern of patterns) {
-        const match = trimmedLine.match(pattern);
-        if (match) {
-          const [candidateName, votes] = pattern === patterns[3] ? 
-            [match[2], match[1]] : [match[1], match[2]];
-          
-          if (candidateName && !isNaN(parseInt(votes))) {
-            results.push({
-              candidateName: candidateName.trim(),
-              votes: parseInt(votes)
-            });
-            matched = true;
-            break;
-          }
-        }
-      }
-
-      if (!matched && trimmedLine.length > 3) {
-        const hasLetters = /[a-zA-Z]{3,}/.test(trimmedLine);
-        const hasNumbers = /\d+/.test(trimmedLine);
+    // Process the extracted text to find candidate names and vote counts
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      // Look for patterns like "Name: 123 votes" or "Name 123"
+      const nameVotePattern = /([^0-9:]+)[:\s]+(\d+)(?:\s*votes?)?/i;
+      const match = line.match(nameVotePattern);
+      
+      if (match) {
+        const candidateName = match[1].trim();
+        const votes = parseInt(match[2]);
         
-        if (hasLetters && !hasNumbers) {
-          currentCandidate = trimmedLine;
-        } else if (currentCandidate && hasNumbers) {
-          const votes = parseInt(trimmedLine.match(/\d+/)?.[0] || '0');
-          if (votes > 0) {
+        if (candidateName && !isNaN(votes)) {
+          results.push({
+            candidateName,
+            votes
+          });
+        }
+      } else if (i < lines.length - 1) {
+        // Check if name and votes are on separate lines
+        const nextLine = lines[i + 1].trim();
+        const votesMatch = nextLine.match(/^(\d+)(?:\s*votes?)?$/i);
+        
+        if (votesMatch && line.length > 3) {
+          const candidateName = line;
+          const votes = parseInt(votesMatch[1]);
+          
+          if (candidateName && !isNaN(votes)) {
             results.push({
-              candidateName: currentCandidate.trim(),
+              candidateName,
               votes
             });
-            currentCandidate = null;
+            i++; // Skip the next line since we already processed it
           }
         }
       }
     }
+    
+    // Second pass to find additional formats or missed patterns
+    if (results.length === 0) {
+      for (const line of lines) {
+        const parts = line.split(/\s+/);
+        if (parts.length >= 2) {
+          const lastPart = parts[parts.length - 1];
+          if (/^\d+$/.test(lastPart)) {
+            const votes = parseInt(lastPart);
+            const candidateName = parts.slice(0, parts.length - 1).join(' ');
+            
+            if (candidateName.length > 3 && !isNaN(votes)) {
+              results.push({
+                candidateName,
+                votes
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Release the worker
+    await worker.terminate();
 
     console.log("Final extracted results:", results);
     return new Response(JSON.stringify({ results }), {
