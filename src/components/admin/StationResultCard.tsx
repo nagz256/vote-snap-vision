@@ -26,7 +26,7 @@ const StationResultCard = ({ stationResult }: { stationResult: StationResult }) 
           </CardHeader>
         </Card>
       </HoverCardTrigger>
-      <HoverCardContent className="w-80">
+      <HoverCardContent className="w-80 shadow-lg bg-white/70 backdrop-blur-sm border border-white/50">
         <CardTitle className="text-base mb-2">{stationResult.station?.name} Results</CardTitle>
         <div className="space-y-2">
           {stationResult.results?.map((result, idx) => (
