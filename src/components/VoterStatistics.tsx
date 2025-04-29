@@ -2,6 +2,8 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { InfoIcon } from "lucide-react";
 
 interface VoterStatisticsProps {
   maleVoters: number;
@@ -13,9 +15,18 @@ interface VoterStatisticsProps {
 
 const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters, onUpdate }: VoterStatisticsProps) => {
   return (
-    <Card className="glass-card">
-      <CardHeader>
+    <Card className="glass-card shadow-md hover:shadow-lg transition-shadow">
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Voter Statistics</CardTitle>
+        <HoverCard>
+          <HoverCardTrigger asChild>
+            <InfoIcon size={16} className="text-muted-foreground cursor-help" />
+          </HoverCardTrigger>
+          <HoverCardContent className="w-80 text-sm">
+            <p>Enter the number of male and female voters along with wasted ballots from this polling station. 
+            The total will be calculated automatically.</p>
+          </HoverCardContent>
+        </HoverCard>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4">
@@ -68,7 +79,7 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
               min="0"
               value={totalVoters}
               readOnly
-              className="glass-input bg-gray-50"
+              className="glass-input bg-gray-50 font-medium"
             />
           </div>
         </div>

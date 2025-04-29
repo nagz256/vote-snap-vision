@@ -1,6 +1,8 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
+import { toast } from "sonner";
 
 interface VoteSnapContextType {
   uploads: Upload[];
@@ -25,6 +27,45 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (isAdmin) {
       fetchUploads();
+      
+      // Set up real-time subscription for uploads
+      const channel = supabase
+        .channel('real-time-updates')
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'uploads' 
+        }, () => {
+          console.log("Uploads changed, refreshing data");
+          fetchUploads();
+        })
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'results' 
+        }, () => {
+          console.log("Results changed, refreshing data");
+          fetchUploads();
+        })
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'voter_statistics' 
+        }, () => {
+          console.log("Voter statistics changed, refreshing data");
+          fetchUploads();
+        })
+        .subscribe();
+      
+      // Set up periodic refresh as a backup
+      const refreshInterval = setInterval(() => {
+        fetchUploads();
+      }, 2000);
+      
+      return () => {
+        supabase.removeChannel(channel);
+        clearInterval(refreshInterval);
+      };
     }
   }, [isAdmin]);
 
@@ -243,37 +284,27 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getVotesByGender = async () => {
     try {
-      const { data: results } = await supabase
-        .from('results')
+      // Get data directly from voter_statistics table
+      const { data: voterStats, error } = await supabase
+        .from('voter_statistics')
         .select(`
-          votes,
-          candidates (
-            name
-          )
+          male_voters,
+          female_voters,
+          total_voters
         `);
         
-      let maleVotes = 0;
-      let femaleVotes = 0;
+      if (error) throw error;
       
-      results?.forEach(result => {
-        const candidateName = result.candidates?.name.toLowerCase() || "";
-        if (candidateName.includes('john') || candidateName.includes('michael')) {
-          maleVotes += result.votes;
-        } 
-        else if (candidateName.includes('jane') || candidateName.includes('emily')) {
-          femaleVotes += result.votes;
-        }
-        else {
-          maleVotes += Math.round(result.votes / 2);
-          femaleVotes += result.votes - Math.round(result.votes / 2);
-        }
-      });
+      // Sum up the values across all polling stations
+      const totals = voterStats?.reduce((acc, stat) => {
+        return {
+          male: acc.male + (stat.male_voters || 0),
+          female: acc.female + (stat.female_voters || 0),
+          total: acc.total + (stat.total_voters || 0)
+        };
+      }, { male: 0, female: 0, total: 0 });
       
-      return {
-        male: maleVotes,
-        female: femaleVotes,
-        total: maleVotes + femaleVotes
-      };
+      return totals || { male: 0, female: 0, total: 0 };
     } catch (error) {
       console.error("Error getting votes by gender:", error);
       return { male: 0, female: 0, total: 0 };
@@ -288,12 +319,19 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
       if (error) {
         console.error("Error processing DR form:", error);
+        toast.error("Failed to process the image. Please try taking a clearer photo.");
         throw error;
+      }
+      
+      if (!data.results || data.results.length === 0) {
+        toast.error("No results could be extracted. Please take a clearer photo or enter results manually.");
+        return [];
       }
       
       return data.results || [];
     } catch (error) {
       console.error("Error in processDRForm:", error);
+      toast.error("Error processing the image. Please try again or enter results manually.");
       throw error;
     }
   };

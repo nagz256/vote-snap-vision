@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +7,9 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recha
 import { LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
-import UploadedImages from "@/components/admin/UploadedImages";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 import { supabase } from "@/integrations/supabase/client";
+import StationResultCard from "@/components/admin/StationResultCard";
 
 const Admin = () => {
   const [username, setUsername] = useState("");
@@ -36,26 +35,41 @@ const Admin = () => {
       const channel = supabase
         .channel('admin-dashboard-updates')
         .on('postgres_changes', { 
-          event: 'INSERT', 
+          event: '*', 
           schema: 'public', 
           table: 'results' 
         }, () => {
-          console.log("New results uploaded, refreshing data");
+          console.log("Results changed, refreshing data");
           fetchTotalVotes();
           fetchStationResults();
         })
         .on('postgres_changes', { 
-          event: 'INSERT', 
+          event: '*', 
           schema: 'public', 
           table: 'uploads' 
         }, () => {
           console.log("New upload detected, refreshing data");
           fetchStationResults();
         })
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'voter_statistics' 
+        }, () => {
+          console.log("Voter statistics updated, refreshing data");
+          fetchStationResults();
+        })
         .subscribe();
+      
+      // Also set up a periodic refresh as backup
+      const refreshInterval = setInterval(() => {
+        fetchTotalVotes();
+        fetchStationResults();
+      }, 2000);
         
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(refreshInterval);
       };
     }
   }, [isAdmin]);
@@ -233,7 +247,7 @@ const Admin = () => {
         {/* Charts */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Percentage Chart */}
-          <Card className="glass-card">
+          <Card className="glass-card shadow-md">
             <CardHeader>
               <CardTitle>Vote Percentage</CardTitle>
             </CardHeader>
@@ -265,7 +279,7 @@ const Admin = () => {
           </Card>
           
           {/* Total Votes Chart */}
-          <Card className="glass-card">
+          <Card className="glass-card shadow-md">
             <CardHeader>
               <CardTitle>Total Votes</CardTitle>
             </CardHeader>
@@ -297,33 +311,15 @@ const Admin = () => {
           </Card>
         </div>
         
-        {/* Uploaded Images Gallery */}
-        <UploadedImages />
-        
         {/* Polling Station Results */}
-        <Card className="glass-card">
+        <Card className="glass-card shadow-md">
           <CardHeader>
             <CardTitle>Polling Station Results</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {stationResults.map(upload => (
-                <Card key={upload.id} className="bg-white/40 border-white/30">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">{upload.station?.name}</CardTitle>
-                    <p className="text-xs text-foreground/70">{upload.station?.district}</p>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {upload.results?.map((result, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span>{result.candidateName}</span>
-                          <span className="font-medium">{result.votes}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+              {stationResults.map(stationResult => (
+                <StationResultCard key={stationResult.id} stationResult={stationResult} />
               ))}
             </div>
           </CardContent>
