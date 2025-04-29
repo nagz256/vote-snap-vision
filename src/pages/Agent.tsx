@@ -96,43 +96,53 @@ const Agent = () => {
     }
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
+        const previewUrl = reader.result as string;
+        
         setFormData({
           ...formData,
           image: file,
-          previewUrl: reader.result as string,
+          previewUrl: previewUrl,
         });
-        setExtractedResults([]);
-        setOcrCompleted(false);
-        setIsRetaking(false);
+        
+        // Automatically start OCR processing once image is loaded
+        if (previewUrl && formData.stationId) {
+          await processImageAutomatically(previewUrl);
+        } else if (!formData.stationId) {
+          toast.error("Please select a polling station before uploading an image");
+        }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const processImage = async () => {
-    if (!formData.previewUrl || !formData.stationId) {
-      toast.error("Please select a polling station and upload an image.");
+  const processImageAutomatically = async (imageUrl: string) => {
+    if (!formData.stationId) {
+      toast.error("Please select a polling station first");
       return;
     }
 
     setIsProcessing(true);
+    setExtractedResults([]);
+    setOcrCompleted(false);
+    
     try {
+      toast.info("Processing image with OCR...");
       console.log("Processing image with Tesseract.js...");
-      const results = await processDRForm(formData.previewUrl);
+      const results = await processDRForm(imageUrl);
       console.log("OCR Results:", results);
       
       if (results && results.length > 0) {
         setExtractedResults(results);
         setIsEditing(true);
         setOcrCompleted(true);
-        toast.success("Image processed successfully! Please review the extracted data.");
+        toast.success("Image processed! Please review and edit the extracted data if needed.");
       } else {
-        toast.warning("No data could be extracted. Please try retaking the image or enter results manually.");
+        toast.warning("No data could be extracted. Please enter results manually.");
         setExtractedResults([
           { candidateName: "", votes: 0 },
           { candidateName: "", votes: 0 }
@@ -142,7 +152,7 @@ const Agent = () => {
       }
     } catch (error) {
       console.error("Error processing image:", error);
-      toast.error("There was an error extracting data from the image. Please try again or enter results manually.");
+      toast.error("There was an error extracting data from the image. Please enter results manually.");
       setExtractedResults([
         { candidateName: "", votes: 0 },
         { candidateName: "", votes: 0 }
@@ -163,6 +173,7 @@ const Agent = () => {
     setExtractedResults([]);
     setOcrCompleted(false);
     setIsRetaking(false);
+    setIsEditing(false);
     triggerFileInput();
   };
 
@@ -326,6 +337,7 @@ const Agent = () => {
                   type="button" 
                   className="glass-button flex items-center gap-2"
                   onClick={triggerFileInput}
+                  disabled={!formData.stationId}
                 >
                   <Camera size={18} />
                   Take Photo
@@ -335,6 +347,7 @@ const Agent = () => {
                   variant="outline" 
                   className="bg-white/50 border-white/50"
                   onClick={triggerFileInput}
+                  disabled={!formData.stationId}
                 >
                   <Upload size={18} className="mr-2" />
                   Upload Image
@@ -345,9 +358,11 @@ const Agent = () => {
                   ref={fileInputRef}
                   className="hidden"
                   onChange={handleFileChange}
+                  disabled={!formData.stationId}
                 />
               </div>
               
+              {/* Image preview with processing indicator */}
               {formData.previewUrl && (
                 <div className="mt-4 relative">
                   <div className="glass-container p-2">
@@ -356,7 +371,17 @@ const Agent = () => {
                       alt="Preview"
                       className="max-h-80 mx-auto rounded-lg"
                     />
-                    {isRetaking && (
+                    
+                    {isProcessing && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
+                        <div className="bg-white/90 p-4 rounded-lg flex flex-col items-center">
+                          <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                          <p className="text-sm font-medium">Processing with OCR...</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {ocrCompleted && (
                       <Button 
                         className="absolute top-4 right-4 bg-white/80 text-black hover:bg-white"
                         size="sm"
@@ -373,7 +398,7 @@ const Agent = () => {
           </div>
           
           {/* Step 3: Enter Voter Statistics */}
-          {formData.previewUrl && !isProcessing && !ocrCompleted && (
+          {formData.previewUrl && !isProcessing && (
             <div>
               <h2 className="text-lg font-medium mb-3">Step 3: Enter Voter Statistics</h2>
               <VoterStatistics
@@ -383,32 +408,6 @@ const Agent = () => {
                 totalVoters={formData.totalVoters}
                 onUpdate={handleStatisticsUpdate}
               />
-            </div>
-          )}
-          
-          {/* Step 3: Process Image */}
-          {formData.previewUrl && (
-            <div>
-              <h2 className="text-lg font-medium mb-3">Step 3: Extract Results</h2>
-              <Button 
-                className="glass-button w-full" 
-                disabled={isProcessing || ocrCompleted}
-                onClick={processImage}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing with Tesseract OCR...
-                  </>
-                ) : ocrCompleted ? (
-                  <>
-                    <Check className="mr-2 h-4 w-4" />
-                    Results Extracted
-                  </>
-                ) : (
-                  "Process Image"
-                )}
-              </Button>
             </div>
           )}
           

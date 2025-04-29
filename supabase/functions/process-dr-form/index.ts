@@ -33,10 +33,12 @@ serve(async (req) => {
     // Initialize Tesseract worker
     const worker = await createWorker('eng');
     
-    // Configure worker settings for better results
+    // Configure worker settings for better results with form data
     await worker.setParameters({
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:., ',
       preserve_interword_spaces: '1',
+      tessjs_create_hocr: '1',
+      tessjs_create_tsv: '1',
     });
 
     console.log("Recognizing text from image...");
@@ -115,6 +117,12 @@ serve(async (req) => {
     await worker.terminate();
 
     console.log("Final extracted results:", results);
+    
+    // If still no results, add placeholder entries for manual entry
+    if (results.length === 0) {
+      results.push({ candidateName: "", votes: 0 }, { candidateName: "", votes: 0 });
+    }
+    
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
