@@ -3,7 +3,7 @@ import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { InfoIcon } from "lucide-react";
+import { InfoIcon, Users, Trash2 } from "lucide-react";
 
 interface VoterStatisticsProps {
   maleVoters: number;
@@ -15,14 +15,14 @@ interface VoterStatisticsProps {
 
 const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters, onUpdate }: VoterStatisticsProps) => {
   return (
-    <Card className="glass-card shadow-md hover:shadow-lg transition-shadow">
+    <Card className="glass-card shadow-md hover:shadow-lg transition-shadow mt-6">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Voter Statistics</CardTitle>
         <HoverCard>
           <HoverCardTrigger asChild>
             <InfoIcon size={16} className="text-muted-foreground cursor-help" />
           </HoverCardTrigger>
-          <HoverCardContent className="w-80 text-sm">
+          <HoverCardContent className="w-80 text-sm bg-background">
             <p>Enter the number of male and female voters along with wasted ballots from this polling station. 
             The total will be calculated automatically.</p>
           </HoverCardContent>
@@ -31,7 +31,8 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
       <CardContent>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label htmlFor="male-voters" className="text-sm font-medium">
+            <label htmlFor="male-voters" className="text-sm font-medium flex items-center gap-2">
+              <Users size={16} />
               Male Voters
             </label>
             <Input
@@ -44,7 +45,8 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="female-voters" className="text-sm font-medium">
+            <label htmlFor="female-voters" className="text-sm font-medium flex items-center gap-2">
+              <Users size={16} />
               Female Voters
             </label>
             <Input
@@ -57,7 +59,8 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="wasted-ballots" className="text-sm font-medium">
+            <label htmlFor="wasted-ballots" className="text-sm font-medium flex items-center gap-2">
+              <Trash2 size={16} />
               Wasted Ballots
             </label>
             <Input
@@ -70,7 +73,8 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="total-voters" className="text-sm font-medium">
+            <label htmlFor="total-voters" className="text-sm font-medium flex items-center gap-2">
+              <Users size={16} />
               Total Voters
             </label>
             <Input

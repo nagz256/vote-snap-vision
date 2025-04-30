@@ -1,14 +1,22 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
 import { toast } from "sonner";
+
+interface VoterStatistics {
+  maleVoters: number;
+  femaleVoters: number;
+  wastedBallots: number;
+  totalVoters: number;
+}
 
 interface VoteSnapContextType {
   uploads: Upload[];
   isAdmin: boolean;
   login: (username: string, password: string) => boolean;
   logout: () => void;
-  addUpload: (upload: Omit<Upload, "id" | "timestamp">, results: ExtractedResult[]) => Promise<void>;
+  addUpload: (upload: Omit<Upload, "id" | "timestamp"> & { voterStatistics?: VoterStatistics }, results: ExtractedResult[]) => Promise<void>;
   getAvailableStations: () => Promise<any[]>;
   refreshAvailableStations: () => Promise<void>;
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
@@ -150,7 +158,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addUpload = async (
-    uploadData: { stationId: string; imagePath: string },
+    uploadData: { 
+      stationId: string; 
+      imagePath: string;
+      voterStatistics?: VoterStatistics;
+    },
     results: ExtractedResult[]
   ) => {
     try {
@@ -170,6 +182,24 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       }
 
       console.log("Upload created:", upload);
+
+      // Add voter statistics if provided
+      if (uploadData.voterStatistics) {
+        const { error: voterStatsError } = await supabase
+          .from('voter_statistics')
+          .insert([{
+            upload_id: upload.id,
+            male_voters: uploadData.voterStatistics.maleVoters,
+            female_voters: uploadData.voterStatistics.femaleVoters,
+            wasted_ballots: uploadData.voterStatistics.wastedBallots,
+            total_voters: uploadData.voterStatistics.totalVoters,
+          }]);
+
+        if (voterStatsError) {
+          console.error("Voter statistics insertion error:", voterStatsError);
+          throw voterStatsError;
+        }
+      }
 
       for (const result of results) {
         console.log("Processing result for candidate:", result.candidateName);

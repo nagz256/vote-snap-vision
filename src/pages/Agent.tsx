@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ExtractedResult } from "@/data/mockData";
+import VoterStatistics from "@/components/VoterStatistics";
 
 interface CandidateResult {
   candidateName: string;
@@ -28,10 +29,24 @@ const Agent = () => {
   const [availableStations, setAvailableStations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [resultsStep, setResultsStep] = useState<"upload" | "scanning" | "verify" | "manual">("upload");
+  
+  // Add voter statistics state
+  const [voterStats, setVoterStats] = useState({
+    maleVoters: 0,
+    femaleVoters: 0,
+    wastedBallots: 0,
+    totalVoters: 0
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { addUpload, getAvailableStations, isAdmin, refreshAvailableStations, processDRForm } = useVoteSnap();
   const { toast } = useToast();
+
+  // Calculate total voters whenever the individual voter counts change
+  useEffect(() => {
+    const total = voterStats.maleVoters + voterStats.femaleVoters;
+    setVoterStats(prev => ({ ...prev, totalVoters: total }));
+  }, [voterStats.maleVoters, voterStats.femaleVoters]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -116,7 +131,7 @@ const Agent = () => {
           // Provide manual entry option regardless of OCR result
           setIsLoading(false);
           setResultsStep("manual");
-          sonnerToast.info("Please enter the results manually from the DR form.");
+          sonnerToast.info("Please enter the results and voter statistics manually.");
           
         } catch (ocrError) {
           console.error("OCR processing failed:", ocrError);
@@ -147,6 +162,13 @@ const Agent = () => {
       newResults[index].votes = Number(value);
     }
     setCandidateResults(newResults);
+  };
+
+  const handleVoterStatsUpdate = (field: string, value: number) => {
+    setVoterStats(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
   const handleAddCandidate = () => {
@@ -201,14 +223,6 @@ const Agent = () => {
       return;
     }
 
-    if (!image && resultsStep !== "manual") {
-      toast({
-        title: "Error",
-        description: "Please upload an image of the DR form.",
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
       // For now, skip actual image upload to Supabase due to "Bucket not found" errors
@@ -220,7 +234,20 @@ const Agent = () => {
         ? URL.createObjectURL(image)  // Use local URL for demo
         : "https://placeholder.com/manual-entry";
 
-      await addUpload({ stationId: selectedStation, imagePath: uploadUrl }, candidateResults);
+      // Include voter statistics in the upload
+      await addUpload(
+        { 
+          stationId: selectedStation, 
+          imagePath: uploadUrl,
+          voterStatistics: {
+            maleVoters: voterStats.maleVoters,
+            femaleVoters: voterStats.femaleVoters,
+            wastedBallots: voterStats.wastedBallots,
+            totalVoters: voterStats.totalVoters
+          }
+        }, 
+        candidateResults
+      );
 
       toast({
         title: "Success",
@@ -247,6 +274,12 @@ const Agent = () => {
       { candidateName: "", votes: 0 },
       { candidateName: "", votes: 0 },
     ]);
+    setVoterStats({
+      maleVoters: 0,
+      femaleVoters: 0,
+      wastedBallots: 0,
+      totalVoters: 0
+    });
     setError(null);
     setResultsStep("upload");
     if (fileInputRef.current) {
@@ -403,6 +436,15 @@ const Agent = () => {
               >
                 Add Another Candidate
               </Button>
+              
+              {/* Voter Statistics */}
+              <VoterStatistics 
+                maleVoters={voterStats.maleVoters}
+                femaleVoters={voterStats.femaleVoters}
+                wastedBallots={voterStats.wastedBallots}
+                totalVoters={voterStats.totalVoters}
+                onUpdate={handleVoterStatsUpdate}
+              />
             </div>
           )}
 
