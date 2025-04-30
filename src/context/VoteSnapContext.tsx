@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -13,7 +12,11 @@ interface VoteSnapContextType {
   getAvailableStations: () => Promise<any[]>;
   refreshAvailableStations: () => Promise<void>;
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
-  processDRForm: (imageUrl: string) => Promise<ExtractedResult[]>;
+  processDRForm: (imageUrl: string) => Promise<{
+    results: ExtractedResult[];
+    success: boolean;
+    error?: string;
+  }>;
   getVotesByGender: () => Promise<{ male: number; female: number; total: number }>;
 }
 
@@ -311,7 +314,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const processDRForm = async (imageUrl: string): Promise<ExtractedResult[]> => {
+  const processDRForm = async (imageUrl: string): Promise<{
+    results: ExtractedResult[];
+    success: boolean;
+    error?: string;
+  }> => {
     try {
       const { data, error } = await supabase.functions.invoke('process-dr-form', {
         body: { imageUrl },
@@ -320,19 +327,35 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       if (error) {
         console.error("Error processing DR form:", error);
         toast.error("Failed to process the image. Please try taking a clearer photo.");
-        throw error;
+        return { 
+          results: [], 
+          success: false, 
+          error: error.message || "Failed to process the image" 
+        };
       }
       
       if (!data.results || data.results.length === 0) {
         toast.error("No results could be extracted. Please take a clearer photo or enter results manually.");
-        return [];
+        return { 
+          results: [], 
+          success: false, 
+          error: "No results could be extracted" 
+        };
       }
       
-      return data.results || [];
-    } catch (error) {
+      return {
+        results: data.results,
+        success: data.success || true,
+        error: data.error
+      };
+    } catch (error: any) {
       console.error("Error in processDRForm:", error);
       toast.error("Error processing the image. Please try again or enter results manually.");
-      throw error;
+      return { 
+        results: [],
+        success: false,
+        error: error.message || "Error processing the image" 
+      };
     }
   };
 
