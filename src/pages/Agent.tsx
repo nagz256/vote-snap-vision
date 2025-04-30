@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
-import { Loader2, Check, Camera, Upload, Edit2, RefreshCcw } from "lucide-react";
+import { Loader2, Check, Camera, Upload, Edit2, RefreshCcw, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import VoterStatistics from "@/components/VoterStatistics";
 import { supabase } from "@/integrations/supabase/client";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface FormData {
   stationId: string | null;
@@ -47,6 +48,7 @@ const Agent = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ocrCompleted, setOcrCompleted] = useState(false);
   const [isRetaking, setIsRetaking] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,6 +111,12 @@ const Agent = () => {
           previewUrl: previewUrl,
         });
         
+        // Reset previous OCR state
+        setOcrError(null);
+        setOcrCompleted(false);
+        setExtractedResults([]);
+        setIsEditing(false);
+        
         // Automatically start OCR processing once image is loaded
         if (previewUrl && formData.stationId) {
           await processImageAutomatically(previewUrl);
@@ -129,38 +137,43 @@ const Agent = () => {
     setIsProcessing(true);
     setExtractedResults([]);
     setOcrCompleted(false);
+    setOcrError(null);
     
     try {
       toast.info("Processing image with OCR...");
       console.log("Processing image with Tesseract.js...");
-      const results = await processDRForm(imageUrl);
-      console.log("OCR Results:", results);
+      const { results, success, error } = await processDRForm(imageUrl);
+      console.log("OCR Results:", results, "Success:", success, "Error:", error);
       
-      if (results && results.length > 0) {
+      if (success && results && results.length > 0) {
         setExtractedResults(results);
         setIsEditing(true);
         setOcrCompleted(true);
         toast.success("Image processed! Please review and edit the extracted data if needed.");
       } else {
-        toast.warning("No data could be extracted. Please enter results manually.");
+        // Handle OCR failure
+        setOcrError(error || "Failed to process the image. Please try taking a clearer photo.");
         setExtractedResults([
           { candidateName: "", votes: 0 },
           { candidateName: "", votes: 0 }
         ]);
         setIsEditing(true);
-        setIsRetaking(true);
+        setIsRetaking(false);
+        toast.error("OCR processing failed. Please enter results manually.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing image:", error);
-      toast.error("There was an error extracting data from the image. Please enter results manually.");
+      setOcrError("Error processing the image. Please try again or enter results manually.");
       setExtractedResults([
         { candidateName: "", votes: 0 },
         { candidateName: "", votes: 0 }
       ]);
       setIsEditing(true);
-      setIsRetaking(true);
+      setIsRetaking(false);
+      toast.error(error.message || "Failed to process the image");
     } finally {
       setIsProcessing(false);
+      setOcrCompleted(true);
     }
   };
 
@@ -174,6 +187,7 @@ const Agent = () => {
     setOcrCompleted(false);
     setIsRetaking(false);
     setIsEditing(false);
+    setOcrError(null);
     triggerFileInput();
   };
 
@@ -286,6 +300,7 @@ const Agent = () => {
       setExtractedResults([]);
       setIsEditing(false);
       setOcrCompleted(false);
+      setOcrError(null);
       
       toast.success("Results submitted successfully!");
       
@@ -337,7 +352,7 @@ const Agent = () => {
                   type="button" 
                   className="glass-button flex items-center gap-2"
                   onClick={triggerFileInput}
-                  disabled={!formData.stationId}
+                  disabled={!formData.stationId || isProcessing}
                 >
                   <Camera size={18} />
                   Take Photo
@@ -347,7 +362,7 @@ const Agent = () => {
                   variant="outline" 
                   className="bg-white/50 border-white/50"
                   onClick={triggerFileInput}
-                  disabled={!formData.stationId}
+                  disabled={!formData.stationId || isProcessing}
                 >
                   <Upload size={18} className="mr-2" />
                   Upload Image
@@ -358,7 +373,7 @@ const Agent = () => {
                   ref={fileInputRef}
                   className="hidden"
                   onChange={handleFileChange}
-                  disabled={!formData.stationId}
+                  disabled={!formData.stationId || isProcessing}
                 />
               </div>
               
@@ -394,6 +409,24 @@ const Agent = () => {
                   </div>
                 </div>
               )}
+              
+              {/* OCR Error Message */}
+              {ocrError && (
+                <Alert variant="destructive" className="bg-red-50/80 border-red-200">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="ml-2">
+                    {ocrError}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="ml-2 bg-white/70 hover:bg-white" 
+                      onClick={retakeImage}
+                    >
+                      Retake Photo
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           </div>
           
@@ -412,7 +445,7 @@ const Agent = () => {
           )}
           
           {/* OCR Result Display */}
-          {ocrCompleted && extractedResults.length > 0 && (
+          {ocrCompleted && extractedResults.length > 0 && !ocrError && (
             <Card className="bg-purple-50/30 border-purple-200/50">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">OCR Scan Results</CardTitle>
@@ -496,6 +529,7 @@ const Agent = () => {
                               size="sm"
                               className="h-8 w-8 p-0"
                               onClick={() => removeCandidateField(index)}
+                              disabled={extractedResults.length <= 1}
                             >
                               <span className="sr-only">Remove</span>
                               ×
