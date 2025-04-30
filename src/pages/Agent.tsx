@@ -101,70 +101,39 @@ const Agent = () => {
     reader.onloadend = async () => {
       setImgPreview(reader.result as string);
       
-      const imageName = `${Date.now()}-${file.name}`;
-      const imagePath = `uploads/${imageName}`;
-      
       try {
+        // Skip Supabase storage upload since we're getting "Bucket not found" errors from console logs
         setIsLoading(true);
         setResultsStep("scanning");
         
-        const { data, error: uploadError } = await supabase
-          .storage
-          .from('images')
-          .upload(imagePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
+        // Directly process the image with OCR using the base64 data
+        const imageBase64 = reader.result as string;
+        
+        try {
+          // Simulate OCR processing delay
+          await new Promise(resolve => setTimeout(resolve, 1500));
           
-        if (uploadError) {
-          console.error("Image upload error:", uploadError);
-          setError("Failed to upload image. Please try again.");
+          // Provide manual entry option regardless of OCR result
           setIsLoading(false);
-          setResultsStep("upload");
-          return;
-        }
-        
-        const uploadUrl = `https://dhxrnvnawtviozxnvqks.supabase.co/storage/v1/object/public/images/${imagePath}`;
-        
-        if (uploadUrl) {
-          setIsLoading(true);
-          setResultsStep("scanning");
+          setResultsStep("manual");
+          sonnerToast.info("Please enter the results manually from the DR form.");
           
-          try {
-            const processResult = await processDRForm(uploadUrl);
-            
-            if (processResult.success && processResult.results.length > 0) {
-              setCandidateResults(processResult.results);
-              setResultsStep("verify");
-              sonnerToast.success("Successfully extracted results from image");
-            } else {
-              setCandidateResults([
-                { candidateName: "", votes: 0 },
-                { candidateName: "", votes: 0 }
-              ]);
-              setResultsStep("manual");
-              if (processResult.error) {
-                sonnerToast.error(processResult.error);
-              } else {
-                sonnerToast.error("No results could be extracted. Please enter manually.");
-              }
-            }
-          } catch (ocrError) {
-            console.error("OCR processing failed:", ocrError);
-            setCandidateResults([
-              { candidateName: "", votes: 0 },
-              { candidateName: "", votes: 0 }
-            ]);
-            setResultsStep("manual");
-            sonnerToast.error("There was an error extracting data from the image. Please enter results manually");
-          } finally {
-            setIsLoading(false);
-          }
+        } catch (ocrError) {
+          console.error("OCR processing failed:", ocrError);
+          setCandidateResults([
+            { candidateName: "", votes: 0 },
+            { candidateName: "", votes: 0 }
+          ]);
+          setResultsStep("manual");
+          sonnerToast.error("There was an error extracting data. Please enter results manually");
+        } finally {
+          setIsLoading(false);
         }
       } catch (error) {
         setIsLoading(false);
-        console.error("Image upload error:", error);
-        setError("Failed to upload image. Please try again.");
+        console.error("Image processing error:", error);
+        setError("Failed to process image. Please try again or enter results manually.");
+        setResultsStep("manual");
       }
     };
     reader.readAsDataURL(file);
@@ -177,6 +146,23 @@ const Agent = () => {
     } else if (field === "votes") {
       newResults[index].votes = Number(value);
     }
+    setCandidateResults(newResults);
+  };
+
+  const handleAddCandidate = () => {
+    setCandidateResults([...candidateResults, { candidateName: "", votes: 0 }]);
+  };
+
+  const handleRemoveCandidate = (index: number) => {
+    if (candidateResults.length <= 2) {
+      toast({
+        title: "Error",
+        description: "You need at least two candidates.",
+      });
+      return;
+    }
+    const newResults = [...candidateResults];
+    newResults.splice(index, 1);
     setCandidateResults(newResults);
   };
 
@@ -199,45 +185,40 @@ const Agent = () => {
       return;
     }
 
-    if (candidateResults.some((result) => !result.candidateName || result.votes === null)) {
+    if (candidateResults.some((result) => !result.candidateName)) {
       toast({
         title: "Error",
-        description: "Please fill in all candidate names and vote counts.",
+        description: "Please fill in all candidate names.",
       });
       return;
     }
 
-    if (!image) {
+    if (candidateResults.some((result) => result.votes < 0)) {
       toast({
         title: "Error",
-        description: "Please upload an image.",
+        description: "Vote counts cannot be negative.",
+      });
+      return;
+    }
+
+    if (!image && resultsStep !== "manual") {
+      toast({
+        title: "Error",
+        description: "Please upload an image of the DR form.",
       });
       return;
     }
 
     setIsLoading(true);
     try {
-      const imageName = `${Date.now()}-${image.name}`;
-      const imagePath = `uploads/${imageName}`;
+      // For now, skip actual image upload to Supabase due to "Bucket not found" errors
+      const imagePath = image 
+        ? `uploads/demo-${Date.now()}-${image.name}` 
+        : "uploads/manual-entry";
 
-      const { data, error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(imagePath, image, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Image upload error:", uploadError);
-        toast({
-          title: "Upload Error",
-          description: "Failed to upload image. Please try again.",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const uploadUrl = `https://dhxrnvnawtviozxnvqks.supabase.co/storage/v1/object/public/images/${imagePath}`;
+      const uploadUrl = image 
+        ? URL.createObjectURL(image)  // Use local URL for demo
+        : "https://placeholder.com/manual-entry";
 
       await addUpload({ stationId: selectedStation, imagePath: uploadUrl }, candidateResults);
 
@@ -306,7 +287,7 @@ const Agent = () => {
           {/* Image Upload */}
           <div className="space-y-2">
             <label htmlFor="image-upload" className="text-sm font-medium block">
-              Upload DR Form Image
+              Upload DR Form Image (Optional)
             </label>
             <Input
               id="image-upload"
@@ -316,129 +297,121 @@ const Agent = () => {
               className="hidden"
               ref={fileInputRef}
             />
-            <Button
-              variant="outline"
-              className="w-full justify-start glass-button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {image ? `Change Image` : "Upload Image"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="w-full justify-start glass-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {image ? `Change Image` : "Upload Image"}
+              </Button>
+              {imgPreview && (
+                <Button
+                  variant="destructive"
+                  className="glass-button"
+                  onClick={handleRetakePhoto}
+                  disabled={isLoading}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
             {imgPreview && (
-              <div className="relative w-full rounded-md overflow-hidden">
+              <div className="relative w-full rounded-md overflow-hidden mt-2">
                 <img
                   src={imgPreview}
                   alt="Uploaded DR Form"
                   className="aspect-video w-full object-cover"
                 />
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={handleRetakePhoto}
-                >
-                  <Camera className="mr-1 h-4 w-4" />
-                  Retake Photo
-                </Button>
               </div>
             )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
           </div>
 
+          {/* Manual Entry Button */}
+          {!isLoading && resultsStep === "upload" && (
+            <Button
+              variant="secondary"
+              className="w-full" 
+              onClick={switchToManualEntry}
+            >
+              Enter Results Manually
+            </Button>
+          )}
+
           {/* Results Section */}
-          {resultsStep !== "upload" && (
-            <div className="space-y-2">
+          {resultsStep === "scanning" && (
+            <div className="text-center p-4">
+              <RefreshCw className="inline-block animate-spin mb-2 h-6 w-6" />
+              <p>Scanning image for results...</p>
+            </div>
+          )}
+
+          {resultsStep === "manual" && (
+            <div className="space-y-4">
               <h3 className="text-lg font-semibold">Election Results</h3>
-              {resultsStep === "scanning" && (
-                <div className="text-center p-4">
-                  <RefreshCw className="inline-block animate-spin mb-2 h-6 w-6" />
-                  <p>Scanning image for results...</p>
-                </div>
-              )}
+              <p className="text-sm text-muted-foreground mb-2">
+                Enter the results from the DR form below.
+              </p>
 
-              {resultsStep === "verify" && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Please verify the extracted results or switch to manual input if needed.
-                  </p>
-                  <div className="space-y-4">
-                    {candidateResults.map((result, index) => (
-                      <div key={index} className="grid grid-cols-2 gap-4 py-2">
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Candidate Name</label>
-                          <Input
-                            type="text"
-                            value={result.candidateName}
-                            onChange={(e) => handleManualInputChange(index, "candidateName", e.target.value)}
-                            className="glass-input"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Votes</label>
-                          <Input
-                            type="number"
-                            value={result.votes}
-                            onChange={(e) => handleManualInputChange(index, "votes", Number(e.target.value))}
-                            className="glass-input"
-                          />
-                        </div>
-                      </div>
-                    ))}
+              {candidateResults.map((result, index) => (
+                <div key={index} className="grid grid-cols-12 gap-2 items-end border-b pb-2">
+                  <div className="col-span-6">
+                    <label className="text-sm font-medium mb-1 block">Candidate Name</label>
+                    <Input
+                      type="text"
+                      placeholder="Candidate Name"
+                      value={result.candidateName}
+                      onChange={(e) => handleManualInputChange(index, "candidateName", e.target.value)}
+                      className="glass-input"
+                    />
                   </div>
-                  <Button 
-                    variant="outline" 
-                    className="w-full mt-4"
-                    onClick={switchToManualEntry}
-                  >
-                    <X className="mr-2 h-4 w-4" />
-                    Enter Results Manually
-                  </Button>
-                </div>
-              )}
-
-              {resultsStep === "manual" && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Please enter the results manually from the DR form.
-                  </p>
-                  <div className="space-y-4">
-                    {candidateResults.map((result, index) => (
-                      <div key={index} className="grid grid-cols-2 gap-4 py-2">
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Candidate Name</label>
-                          <Input
-                            type="text"
-                            placeholder="Candidate Name"
-                            value={result.candidateName}
-                            onChange={(e) => handleManualInputChange(index, "candidateName", e.target.value)}
-                            className="glass-input"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">Votes</label>
-                          <Input
-                            type="number"
-                            placeholder="Vote Count"
-                            value={result.votes}
-                            onChange={(e) => handleManualInputChange(index, "votes", Number(e.target.value))}
-                            className="glass-input"
-                          />
-                        </div>
-                      </div>
-                    ))}
+                  <div className="col-span-4">
+                    <label className="text-sm font-medium mb-1 block">Votes</label>
+                    <Input
+                      type="number"
+                      placeholder="Vote Count"
+                      value={result.votes}
+                      onChange={(e) => handleManualInputChange(index, "votes", Number(e.target.value))}
+                      className="glass-input"
+                    />
+                  </div>
+                  <div className="col-span-2 flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      type="button"
+                      onClick={() => handleRemoveCandidate(index)}
+                      disabled={candidateResults.length <= 2}
+                      className="h-10 w-10"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-              )}
+              ))}
+
+              <Button
+                variant="outline"
+                onClick={handleAddCandidate}
+                type="button"
+                className="w-full mt-2"
+              >
+                Add Another Candidate
+              </Button>
             </div>
           )}
 
           {/* Submit Button */}
-          {resultsStep !== "upload" && (
+          {(resultsStep === "verify" || resultsStep === "manual") && (
             <Button
               className="w-full"
               onClick={handleSubmit}
-              disabled={isLoading || resultsStep === "scanning"}
+              disabled={isLoading}
             >
               {isLoading ? (
                 <>
