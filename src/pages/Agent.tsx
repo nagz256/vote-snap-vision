@@ -1,3 +1,4 @@
+
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +145,8 @@ const Agent = () => {
               setResultsStep("manual");
               if (processResult.error) {
                 sonnerToast.error(processResult.error);
+              } else {
+                sonnerToast.error("No results could be extracted. Please enter manually.");
               }
             }
           } catch (ocrError) {
@@ -175,6 +178,16 @@ const Agent = () => {
       newResults[index].votes = Number(value);
     }
     setCandidateResults(newResults);
+  };
+
+  const handleRetakePhoto = () => {
+    setImage(null);
+    setImgPreview(null);
+    setResultsStep("upload");
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleSubmit = async () => {
@@ -260,6 +273,10 @@ const Agent = () => {
     }
   };
 
+  const switchToManualEntry = () => {
+    setResultsStep("manual");
+  };
+
   return (
     <div className="container mx-auto p-4">
       <Card className="glass-card">
@@ -272,7 +289,7 @@ const Agent = () => {
             <label htmlFor="station" className="text-sm font-medium block">
               Select Polling Station
             </label>
-            <Select onValueChange={handleStationSelect}>
+            <Select onValueChange={handleStationSelect} value={selectedStation}>
               <SelectTrigger className="glass-input w-full">
                 <SelectValue placeholder="Select a station" />
               </SelectTrigger>
@@ -315,6 +332,15 @@ const Agent = () => {
                   alt="Uploaded DR Form"
                   className="aspect-video w-full object-cover"
                 />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="absolute top-2 right-2"
+                  onClick={handleRetakePhoto}
+                >
+                  <Camera className="mr-1 h-4 w-4" />
+                  Retake Photo
+                </Button>
               </div>
             )}
             {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -323,65 +349,85 @@ const Agent = () => {
           {/* Results Section */}
           {resultsStep !== "upload" && (
             <div className="space-y-2">
-              <h3 className="text-lg font-semibold">Enter Results</h3>
+              <h3 className="text-lg font-semibold">Election Results</h3>
               {resultsStep === "scanning" && (
-                <div className="text-center">
-                  <RefreshCw className="inline-block animate-spin" />
+                <div className="text-center p-4">
+                  <RefreshCw className="inline-block animate-spin mb-2 h-6 w-6" />
                   <p>Scanning image for results...</p>
                 </div>
               )}
+
               {resultsStep === "verify" && (
                 <div>
-                  <p className="text-sm text-muted-foreground">
-                    Please verify the extracted results.
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Please verify the extracted results or switch to manual input if needed.
                   </p>
-                  {candidateResults.map((result, index) => (
-                    <div key={index} className="grid grid-cols-2 gap-4 py-2">
-                      <Input
-                        type="text"
-                        placeholder="Candidate Name"
-                        value={result.candidateName}
-                        readOnly
-                        className="glass-input"
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Votes"
-                        value={result.votes}
-                        readOnly
-                        className="glass-input"
-                      />
-                    </div>
-                  ))}
+                  <div className="space-y-4">
+                    {candidateResults.map((result, index) => (
+                      <div key={index} className="grid grid-cols-2 gap-4 py-2">
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Candidate Name</label>
+                          <Input
+                            type="text"
+                            value={result.candidateName}
+                            onChange={(e) => handleManualInputChange(index, "candidateName", e.target.value)}
+                            className="glass-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Votes</label>
+                          <Input
+                            type="number"
+                            value={result.votes}
+                            onChange={(e) => handleManualInputChange(index, "votes", Number(e.target.value))}
+                            className="glass-input"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    className="w-full mt-4"
+                    onClick={switchToManualEntry}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Enter Results Manually
+                  </Button>
                 </div>
               )}
+
               {resultsStep === "manual" && (
                 <div>
-                  <p className="text-sm text-muted-foreground">
-                    Automatic extraction failed. Please enter the results manually.
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Please enter the results manually from the DR form.
                   </p>
-                  {candidateResults.map((result, index) => (
-                    <div key={index} className="grid grid-cols-2 gap-4 py-2">
-                      <Input
-                        type="text"
-                        placeholder="Candidate Name"
-                        value={result.candidateName}
-                        onChange={(e) =>
-                          handleManualInputChange(index, "candidateName", e.target.value)
-                        }
-                        className="glass-input"
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Votes"
-                        value={result.votes}
-                        onChange={(e) =>
-                          handleManualInputChange(index, "votes", Number(e.target.value))
-                        }
-                        className="glass-input"
-                      />
-                    </div>
-                  ))}
+                  <div className="space-y-4">
+                    {candidateResults.map((result, index) => (
+                      <div key={index} className="grid grid-cols-2 gap-4 py-2">
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Candidate Name</label>
+                          <Input
+                            type="text"
+                            placeholder="Candidate Name"
+                            value={result.candidateName}
+                            onChange={(e) => handleManualInputChange(index, "candidateName", e.target.value)}
+                            className="glass-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Votes</label>
+                          <Input
+                            type="number"
+                            placeholder="Vote Count"
+                            value={result.votes}
+                            onChange={(e) => handleManualInputChange(index, "votes", Number(e.target.value))}
+                            className="glass-input"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
