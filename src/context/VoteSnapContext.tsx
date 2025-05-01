@@ -21,6 +21,7 @@ interface VoteSnapContextType {
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<{
     results: ExtractedResult[];
+    voterStats?: VoterStatistics;
     success: boolean;
     error?: string;
   }>;
@@ -346,6 +347,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const processDRForm = async (imageUrl: string): Promise<{
     results: ExtractedResult[];
+    voterStats?: VoterStatistics;
     success: boolean;
     error?: string;
   }> => {
@@ -375,6 +377,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       
       return {
         results: data.results,
+        voterStats: data.voterStats,
         success: data.success || true,
         error: data.error
       };

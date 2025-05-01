@@ -105,6 +105,35 @@ serve(async (req) => {
         }
       }
       
+      // Also try to extract voter statistics
+      const voterStats = {
+        maleVoters: 0,
+        femaleVoters: 0,
+        wastedBallots: 0,
+        totalVoters: 0
+      };
+      
+      // Look for voter statistics patterns in the text
+      const malePattern = /male\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i;
+      const femalePattern = /female\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i;
+      const wastedPattern = /(wasted|spoilt|rejected|invalid)\s*[ballots|votes|:]*\s*[:|=|\s]\s*(\d+)/i;
+      const totalPattern = /total\s*[voters|votes|count|:]*\s*[:|=|\s]\s*(\d+)/i;
+      
+      const maleMatch = data.text.match(malePattern);
+      const femaleMatch = data.text.match(femalePattern);
+      const wastedMatch = data.text.match(wastedPattern);
+      const totalMatch = data.text.match(totalPattern);
+      
+      if (maleMatch) voterStats.maleVoters = parseInt(maleMatch[1]);
+      if (femaleMatch) voterStats.femaleVoters = parseInt(femaleMatch[1]);
+      if (wastedMatch) voterStats.wastedBallots = parseInt(wastedMatch[2]);
+      if (totalMatch) voterStats.totalVoters = parseInt(totalMatch[1]);
+      
+      // If we have male and female but no total, calculate it
+      if (voterStats.maleVoters && voterStats.femaleVoters && !voterStats.totalVoters) {
+        voterStats.totalVoters = voterStats.maleVoters + voterStats.femaleVoters;
+      }
+      
       // Second pass to find additional formats or missed patterns
       if (results.length === 0) {
         for (const line of lines) {
@@ -130,13 +159,18 @@ serve(async (req) => {
       await worker.terminate();
 
       console.log("Final extracted results:", results);
+      console.log("Extracted voter statistics:", voterStats);
       
       // If still no results, add placeholder entries for manual entry
       if (results.length === 0) {
         throw new Error('No candidate data could be extracted from the image');
       }
       
-      return new Response(JSON.stringify({ results, success: true }), {
+      return new Response(JSON.stringify({ 
+        results, 
+        voterStats, 
+        success: true 
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
       
@@ -151,7 +185,13 @@ serve(async (req) => {
       JSON.stringify({ 
         error: error.message,
         success: false,
-        results: [{ candidateName: "", votes: 0 }, { candidateName: "", votes: 0 }]
+        results: [{ candidateName: "", votes: 0 }, { candidateName: "", votes: 0 }],
+        voterStats: {
+          maleVoters: 0,
+          femaleVoters: 0,
+          wastedBallots: 0,
+          totalVoters: 0
+        }
       }),
       { 
         status: 200, // Return 200 even with error to handle it gracefully in the UI

@@ -28,6 +28,7 @@ const Agent = () => {
   const [error, setError] = useState<string | null>(null);
   const [availableStations, setAvailableStations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isProcessingImage, setIsProcessingImage] = useState<boolean>(false);
   const [resultsStep, setResultsStep] = useState<"upload" | "scanning" | "verify" | "manual">("upload");
   
   // Add voter statistics state
@@ -79,8 +80,8 @@ const Agent = () => {
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setError("File size exceeds the limit of 5MB.");
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size exceeds the limit of 10MB.");
       return;
     }
 
@@ -90,68 +91,56 @@ const Agent = () => {
     const reader = new FileReader();
     reader.onloadend = () => {
       setImgPreview(reader.result as string);
+      processImageWithOcr(reader.result as string);
     };
     reader.readAsDataURL(file);
-    setResultsStep("upload");
   };
 
-  const handleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const processImageWithOcr = async (imageDataUrl: string) => {
+    if (!imageDataUrl) return;
     
-    if (!file) {
-      setImage(null);
-      setImgPreview(null);
-      return;
-    }
-    
-    if (file.size > 5 * 1024 * 1024) {
-      setError("File size exceeds the limit of 5MB.");
-      return;
-    }
-    
-    setImage(file);
-    setError(null);
-    
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      setImgPreview(reader.result as string);
+    try {
+      setIsProcessingImage(true);
+      setResultsStep("scanning");
+      sonnerToast.info("Analyzing form...", { duration: 2000 });
       
-      try {
-        // Skip Supabase storage upload since we're getting "Bucket not found" errors from console logs
-        setIsLoading(true);
-        setResultsStep("scanning");
+      // Process the image with the edge function
+      const response = await processDRForm(imageDataUrl);
+      
+      if (response.success && response.results && response.results.length > 0) {
+        setCandidateResults(response.results);
         
-        // Directly process the image with OCR using the base64 data
-        const imageBase64 = reader.result as string;
-        
-        try {
-          // Simulate OCR processing delay
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          // Provide manual entry option regardless of OCR result
-          setIsLoading(false);
-          setResultsStep("manual");
-          sonnerToast.info("Please enter the results and voter statistics manually.");
-          
-        } catch (ocrError) {
-          console.error("OCR processing failed:", ocrError);
-          setCandidateResults([
-            { candidateName: "", votes: 0 },
-            { candidateName: "", votes: 0 }
-          ]);
-          setResultsStep("manual");
-          sonnerToast.error("There was an error extracting data. Please enter results manually");
-        } finally {
-          setIsLoading(false);
+        // Also set voter statistics if available
+        if (response.voterStats) {
+          setVoterStats({
+            maleVoters: response.voterStats.maleVoters || 0,
+            femaleVoters: response.voterStats.femaleVoters || 0,
+            wastedBallots: response.voterStats.wastedBallots || 0,
+            totalVoters: response.voterStats.totalVoters || 0
+          });
         }
-      } catch (error) {
-        setIsLoading(false);
-        console.error("Image processing error:", error);
-        setError("Failed to process image. Please try again or enter results manually.");
+        
+        setResultsStep("verify");
+        sonnerToast.success("Form analyzed successfully! Please verify the results.", { duration: 4000 });
+      } else {
+        setCandidateResults([
+          { candidateName: "", votes: 0 },
+          { candidateName: "", votes: 0 }
+        ]);
         setResultsStep("manual");
+        sonnerToast.warning("Couldn't extract data automatically. Please enter results manually.", { duration: 5000 });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("OCR processing error:", err);
+      setCandidateResults([
+        { candidateName: "", votes: 0 },
+        { candidateName: "", votes: 0 }
+      ]);
+      setResultsStep("manual");
+      sonnerToast.error("Error processing the image. Please enter results manually.");
+    } finally {
+      setIsProcessingImage(false);
+    }
   };
 
   const handleManualInputChange = (index: number, field: string, value: string | number) => {
@@ -225,15 +214,11 @@ const Agent = () => {
 
     setIsLoading(true);
     try {
-      // For now, skip actual image upload to Supabase due to "Bucket not found" errors
-      const imagePath = image 
-        ? `uploads/demo-${Date.now()}-${image.name}` 
-        : "uploads/manual-entry";
-
+      // Use local URL for preview when available
       const uploadUrl = image 
-        ? URL.createObjectURL(image)  // Use local URL for demo
-        : "https://placeholder.com/manual-entry";
-
+        ? URL.createObjectURL(image)  
+        : "manual-entry-no-image";
+        
       // Include voter statistics in the upload
       await addUpload(
         { 
@@ -255,6 +240,7 @@ const Agent = () => {
       });
 
       resetForm();
+      refreshStations(); // Refresh available stations after submission
     } catch (error) {
       console.error("Upload error:", error);
       toast({
@@ -320,13 +306,13 @@ const Agent = () => {
           {/* Image Upload */}
           <div className="space-y-2">
             <label htmlFor="image-upload" className="text-sm font-medium block">
-              Upload DR Form Image (Optional)
+              Upload DR Form Image
             </label>
             <Input
               id="image-upload"
               type="file"
               accept="image/*"
-              onChange={handleImageUpload}
+              onChange={handleImageChange}
               className="hidden"
               ref={fileInputRef}
             />
@@ -335,7 +321,7 @@ const Agent = () => {
                 variant="outline"
                 className="w-full justify-start glass-button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
+                disabled={isLoading || isProcessingImage}
               >
                 <Upload className="mr-2 h-4 w-4" />
                 {image ? `Change Image` : "Upload Image"}
@@ -345,7 +331,7 @@ const Agent = () => {
                   variant="destructive"
                   className="glass-button"
                   onClick={handleRetakePhoto}
-                  disabled={isLoading}
+                  disabled={isLoading || isProcessingImage}
                 >
                   <X className="mr-2 h-4 w-4" />
                   Clear
@@ -358,7 +344,7 @@ const Agent = () => {
                 <img
                   src={imgPreview}
                   alt="Uploaded DR Form"
-                  className="aspect-video w-full object-cover"
+                  className="aspect-video w-full object-contain border rounded-md"
                 />
               </div>
             )}
@@ -366,11 +352,12 @@ const Agent = () => {
           </div>
 
           {/* Manual Entry Button */}
-          {!isLoading && resultsStep === "upload" && (
+          {!isProcessingImage && (resultsStep === "upload" || resultsStep === "verify") && (
             <Button
               variant="secondary"
               className="w-full" 
               onClick={switchToManualEntry}
+              disabled={isLoading}
             >
               Enter Results Manually
             </Button>
@@ -384,11 +371,13 @@ const Agent = () => {
             </div>
           )}
 
-          {resultsStep === "manual" && (
+          {(resultsStep === "manual" || resultsStep === "verify") && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Election Results</h3>
               <p className="text-sm text-muted-foreground mb-2">
-                Enter the results from the DR form below.
+                {resultsStep === "verify" 
+                  ? "Please verify and edit the extracted results if needed."
+                  : "Enter the results from the DR form below."}
               </p>
 
               {candidateResults.map((result, index) => (
