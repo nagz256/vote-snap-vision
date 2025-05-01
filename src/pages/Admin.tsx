@@ -1,22 +1,21 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { LogOut } from "lucide-react";
 import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 import { supabase } from "@/integrations/supabase/client";
 import StationResultCard from "@/components/admin/StationResultCard";
+import PieCharts from "@/components/admin/PieCharts";
 
 const Admin = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
-  const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
   const [stationResults, setStationResults] = useState<Array<{
     id: string;
     station: {name: string, district: string};
@@ -28,7 +27,6 @@ const Admin = () => {
   // Fetch data when admin logs in
   useEffect(() => {
     if (isAdmin) {
-      fetchTotalVotes();
       fetchStationResults();
 
       // Set up subscription to update data on realtime changes
@@ -40,7 +38,6 @@ const Admin = () => {
           table: 'results' 
         }, () => {
           console.log("Results changed, refreshing data");
-          fetchTotalVotes();
           fetchStationResults();
         })
         .on('postgres_changes', { 
@@ -63,9 +60,8 @@ const Admin = () => {
       
       // Also set up a periodic refresh as backup
       const refreshInterval = setInterval(() => {
-        fetchTotalVotes();
         fetchStationResults();
-      }, 2000);
+      }, 30000);
         
       return () => {
         supabase.removeChannel(channel);
@@ -73,41 +69,6 @@ const Admin = () => {
       };
     }
   }, [isAdmin]);
-
-  const fetchTotalVotes = async () => {
-    try {
-      console.log("Fetching total votes data...");
-      const { data: resultsData } = await supabase
-        .from('results')
-        .select(`
-          votes,
-          candidates (
-            name
-          )
-        `);
-
-      const totalVotes: Record<string, number> = {};
-      resultsData?.forEach(result => {
-        const candidateName = result.candidates.name;
-        totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
-      });
-
-      const voteData = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
-      setTotalVotesData(voteData);
-      
-      // Calculate percentage data
-      const totalVotesSum = voteData.reduce((sum, item) => sum + item.votes, 0);
-      const percentData = voteData.map(item => ({
-        ...item,
-        percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
-      }));
-      setPercentageData(percentData);
-      
-      console.log("Total votes data fetched:", voteData);
-    } catch (error) {
-      console.error("Error fetching vote data:", error);
-    }
-  };
   
   const fetchStationResults = async () => {
     try {
@@ -168,8 +129,6 @@ const Admin = () => {
       setLoginError("Invalid username or password");
     }
   };
-
-  const COLORS = ['#9b87f5', '#7E69AB', '#D6BCFA', '#6357b5'];
   
   if (!isAdmin) {
     return (
@@ -244,72 +203,8 @@ const Admin = () => {
         {/* Statistics Cards */}
         <StatsCards />
         
-        {/* Charts */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Percentage Chart */}
-          <Card className="glass-card shadow-md">
-            <CardHeader>
-              <CardTitle>Vote Percentage</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={percentageData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={true}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="votes"
-                      nameKey="name"
-                      label={({ name, percentage }) => `${name}: ${percentage}%`}
-                    >
-                      {percentageData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${value} votes`, ""]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-          
-          {/* Total Votes Chart */}
-          <Card className="glass-card shadow-md">
-            <CardHeader>
-              <CardTitle>Total Votes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={totalVotesData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={true}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="votes"
-                      nameKey="name"
-                      label={({ name, votes }) => `${name}: ${votes}`}
-                    >
-                      {totalVotesData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${value} votes`, ""]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Charts - Using our new PieCharts component */}
+        <PieCharts />
         
         {/* Polling Station Results */}
         <Card className="glass-card shadow-md">
@@ -318,9 +213,15 @@ const Admin = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {stationResults.map(stationResult => (
-                <StationResultCard key={stationResult.id} stationResult={stationResult} />
-              ))}
+              {stationResults.length > 0 ? (
+                stationResults.map(stationResult => (
+                  <StationResultCard key={stationResult.id} stationResult={stationResult} />
+                ))
+              ) : (
+                <div className="col-span-full text-center py-6 text-muted-foreground">
+                  No polling station results available yet
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
