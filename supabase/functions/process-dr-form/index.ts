@@ -7,6 +7,235 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+/**
+ * Enhanced OCR text extraction with preprocessing
+ * 
+ * @param imageBlob - The image blob to process
+ * @param options - Configuration options for OCR processing
+ * @returns Recognized text from the image
+ */
+async function enhancedOcr(imageBlob, options = {}) {
+  try {
+    console.log("Starting enhanced OCR processing...");
+    
+    // Default options for form processing
+    const opts = {
+      lang: 'eng',
+      charWhitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:.,/ ',
+      tessParams: {
+        preserve_interword_spaces: '1',
+        tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
+        tessedit_ocr_engine_mode: '3', // Default, based on what is available
+        user_defined_dpi: '300',
+      },
+      ...options
+    };
+    
+    // Initialize worker with language
+    console.log("Creating Tesseract worker...");
+    const worker = await createWorker(opts.lang);
+    
+    // Configure worker parameters
+    console.log("Setting Tesseract parameters...");
+    await worker.setParameters({
+      tessedit_char_whitelist: opts.charWhitelist,
+      ...opts.tessParams
+    });
+    
+    console.log("Starting recognition process...");
+    // Process the image with a timeout
+    const recognizePromise = worker.recognize(imageBlob);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("OCR process timed out")), 45000); // 45 second timeout
+    });
+    
+    const result = await Promise.race([recognizePromise, timeoutPromise]);
+    console.log("Recognition complete");
+    
+    // Clean up
+    await worker.terminate();
+    
+    // Return the recognized text
+    return result.data;
+  } catch (error) {
+    console.error("Enhanced OCR error:", error);
+    throw error;
+  }
+}
+
+/**
+ * Extract candidate results from OCR text
+ * 
+ * @param text - OCR extracted text
+ * @returns Array of candidate name and vote count pairs
+ */
+function extractCandidateResults(text) {
+  const lines = text.split('\n');
+  const results = [];
+  
+  console.log("Extracting candidate results from text:", text);
+  
+  // Various patterns to match candidate names and vote counts
+  const patterns = [
+    // Name: 123 votes
+    /([^0-9:]+)[:\s]+(\d+)(?:\s*votes?)?/i,
+    
+    // Name followed by number
+    /^([^0-9]+?)[\s\.]+(\d+)$/i,
+    
+    // Name (possibly with title) followed by number
+    /^([A-Za-z\s\.]+(?:\w+\.)?)[:\s\.]+(\d+)$/i,
+    
+    // Name with trailing dots/spaces then number
+    /^([^0-9]+?)[.\s]{2,}(\d+)$/i,
+  ];
+  
+  // First pass: Look for patterns in each line
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.length < 3) continue;
+    
+    // Try each pattern
+    let matched = false;
+    
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match) {
+        const candidateName = match[1].trim();
+        const votes = parseInt(match[2]);
+        
+        if (candidateName && !isNaN(votes) && candidateName.length > 2) {
+          results.push({ candidateName, votes });
+          matched = true;
+          break;
+        }
+      }
+    }
+    
+    // If no match, check if name and votes might be on separate lines
+    if (!matched && i < lines.length - 1) {
+      const nextLine = lines[i + 1].trim();
+      const votesMatch = nextLine.match(/^(\d+)(?:\s*votes?)?$/i);
+      
+      if (votesMatch && line.length > 3) {
+        const candidateName = line;
+        const votes = parseInt(votesMatch[1]);
+        
+        if (candidateName && !isNaN(votes)) {
+          results.push({ candidateName, votes });
+          i++; // Skip the next line since we processed it
+        }
+      }
+    }
+  }
+  
+  // If few results were found, try column-based extraction
+  if (results.length < 2) {
+    console.log("Few results found, trying column-based extraction");
+    
+    // Find lines with numbers, assume they might be vote counts
+    const potentialResults = [];
+    for (const line of lines) {
+      const parts = line.split(/\s{2,}|\t/); // Split by multiple spaces or tabs
+      
+      if (parts.length >= 2) {
+        const lastPart = parts[parts.length - 1].trim();
+        if (/^\d+$/.test(lastPart)) {
+          const votes = parseInt(lastPart);
+          const candidateName = parts.slice(0, parts.length - 1).join(' ').trim();
+          
+          if (candidateName.length > 2 && !isNaN(votes)) {
+            potentialResults.push({ candidateName, votes });
+          }
+        }
+      }
+    }
+    
+    // If we found at least 2 results, use them
+    if (potentialResults.length >= 2) {
+      return potentialResults;
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Extract voter statistics from OCR text
+ * 
+ * @param text - OCR extracted text
+ * @returns Object containing voter statistics
+ */
+function extractVoterStatistics(text) {
+  const voterStats = {
+    maleVoters: 0,
+    femaleVoters: 0,
+    wastedBallots: 0,
+    totalVoters: 0
+  };
+  
+  console.log("Extracting voter statistics from text");
+  
+  // Enhanced pattern matching for voter statistics
+  const patterns = {
+    male: [
+      /male\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /men\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /male:?\s*(\d+)/i,
+      /men:?\s*(\d+)/i
+    ],
+    female: [
+      /female\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /women\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /female:?\s*(\d+)/i,
+      /women:?\s*(\d+)/i
+    ],
+    wasted: [
+      /(wasted|spoilt|rejected|invalid|void)\s*[ballots|votes|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /(wasted|spoilt|rejected|invalid|void):?\s*(\d+)/i
+    ],
+    total: [
+      /total\s*[voters|votes|count|:]*\s*[:|=|\s]\s*(\d+)/i,
+      /total:?\s*(\d+)/i,
+      /voters\s*total:?\s*(\d+)/i
+    ]
+  };
+  
+  // Try each pattern for each statistic type
+  for (const [key, patternList] of Object.entries(patterns)) {
+    for (const pattern of patternList) {
+      const match = text.match(pattern);
+      if (match) {
+        const value = parseInt(match[match.length - 1]);
+        if (!isNaN(value)) {
+          switch (key) {
+            case 'male':
+              voterStats.maleVoters = value;
+              break;
+            case 'female':
+              voterStats.femaleVoters = value;
+              break;
+            case 'wasted':
+              voterStats.wastedBallots = value;
+              break;
+            case 'total':
+              voterStats.totalVoters = value;
+              break;
+          }
+          break; // Found a match for this stat, move to next
+        }
+      }
+    }
+  }
+  
+  // If we have male and female but no total, calculate it
+  if (voterStats.maleVoters && voterStats.femaleVoters && !voterStats.totalVoters) {
+    voterStats.totalVoters = voterStats.maleVoters + voterStats.femaleVoters;
+  }
+  
+  return voterStats;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -20,7 +249,7 @@ serve(async (req) => {
       throw new Error('Image URL is required')
     }
 
-    console.log("Processing image with Tesseract.js:", imageUrl.substring(0, 50) + "...");
+    console.log("Processing image:", imageUrl.substring(0, 50) + "...");
 
     // Fetch the image data
     const imageResponse = await fetch(imageUrl);
@@ -31,133 +260,27 @@ serve(async (req) => {
     const imageBlob = await imageResponse.blob();
 
     try {
-      // Initialize Tesseract worker
-      const worker = await createWorker('eng');
-      
-      // Configure worker settings for better results with form data
-      await worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:., ',
-        preserve_interword_spaces: '1',
-        tessjs_create_hocr: '1',
-        tessjs_create_tsv: '1',
+      // Process with enhanced OCR
+      console.log("Starting enhanced OCR processing");
+      const ocrData = await enhancedOcr(imageBlob, {
+        lang: 'eng',
+        charWhitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:.,/ ',
       });
-
-      console.log("Recognizing text from image...");
-      
-      // Perform OCR on the image with timeout handling
-      const recognizePromise = worker.recognize(imageBlob);
-      
-      // Add timeout for OCR process (30 seconds)
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("OCR process timed out")), 30000);
-      });
-      
-      const { data } = await Promise.race([recognizePromise, timeoutPromise]);
       
       console.log("OCR completed, processing results...");
-      console.log("Raw text:", data.text);
+      console.log("Raw text:", ocrData.text);
       
       // Check if we got meaningful text
-      if (!data.text || data.text.trim().length < 10) {
+      if (!ocrData.text || ocrData.text.trim().length < 10) {
         throw new Error('Insufficient text recognized from image');
       }
       
-      // Parse results to extract candidate names and vote counts
-      const lines = data.text.split('\n');
-      const results = [];
+      // Extract candidate results
+      const results = extractCandidateResults(ocrData.text);
       
-      // Process the extracted text to find candidate names and vote counts
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        // Look for patterns like "Name: 123 votes" or "Name 123"
-        const nameVotePattern = /([^0-9:]+)[:\s]+(\d+)(?:\s*votes?)?/i;
-        const match = line.match(nameVotePattern);
-        
-        if (match) {
-          const candidateName = match[1].trim();
-          const votes = parseInt(match[2]);
-          
-          if (candidateName && !isNaN(votes)) {
-            results.push({
-              candidateName,
-              votes
-            });
-          }
-        } else if (i < lines.length - 1) {
-          // Check if name and votes are on separate lines
-          const nextLine = lines[i + 1].trim();
-          const votesMatch = nextLine.match(/^(\d+)(?:\s*votes?)?$/i);
-          
-          if (votesMatch && line.length > 3) {
-            const candidateName = line;
-            const votes = parseInt(votesMatch[1]);
-            
-            if (candidateName && !isNaN(votes)) {
-              results.push({
-                candidateName,
-                votes
-              });
-              i++; // Skip the next line since we already processed it
-            }
-          }
-        }
-      }
+      // Extract voter statistics
+      const voterStats = extractVoterStatistics(ocrData.text);
       
-      // Also try to extract voter statistics
-      const voterStats = {
-        maleVoters: 0,
-        femaleVoters: 0,
-        wastedBallots: 0,
-        totalVoters: 0
-      };
-      
-      // Look for voter statistics patterns in the text
-      const malePattern = /male\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i;
-      const femalePattern = /female\s*[voters|voters|count|:]*\s*[:|=|\s]\s*(\d+)/i;
-      const wastedPattern = /(wasted|spoilt|rejected|invalid)\s*[ballots|votes|:]*\s*[:|=|\s]\s*(\d+)/i;
-      const totalPattern = /total\s*[voters|votes|count|:]*\s*[:|=|\s]\s*(\d+)/i;
-      
-      const maleMatch = data.text.match(malePattern);
-      const femaleMatch = data.text.match(femalePattern);
-      const wastedMatch = data.text.match(wastedPattern);
-      const totalMatch = data.text.match(totalPattern);
-      
-      if (maleMatch) voterStats.maleVoters = parseInt(maleMatch[1]);
-      if (femaleMatch) voterStats.femaleVoters = parseInt(femaleMatch[1]);
-      if (wastedMatch) voterStats.wastedBallots = parseInt(wastedMatch[2]);
-      if (totalMatch) voterStats.totalVoters = parseInt(totalMatch[1]);
-      
-      // If we have male and female but no total, calculate it
-      if (voterStats.maleVoters && voterStats.femaleVoters && !voterStats.totalVoters) {
-        voterStats.totalVoters = voterStats.maleVoters + voterStats.femaleVoters;
-      }
-      
-      // Second pass to find additional formats or missed patterns
-      if (results.length === 0) {
-        for (const line of lines) {
-          const parts = line.split(/\s+/);
-          if (parts.length >= 2) {
-            const lastPart = parts[parts.length - 1];
-            if (/^\d+$/.test(lastPart)) {
-              const votes = parseInt(lastPart);
-              const candidateName = parts.slice(0, parts.length - 1).join(' ');
-              
-              if (candidateName.length > 3 && !isNaN(votes)) {
-                results.push({
-                  candidateName,
-                  votes
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      // Release the worker
-      await worker.terminate();
-
       console.log("Final extracted results:", results);
       console.log("Extracted voter statistics:", voterStats);
       
@@ -169,7 +292,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         results, 
         voterStats, 
-        success: true 
+        success: true,
+        confidence: ocrData.confidence
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
