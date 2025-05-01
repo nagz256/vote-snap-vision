@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -187,13 +186,14 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       if (uploadData.voterStatistics) {
         const { error: voterStatsError } = await supabase
           .from('voter_statistics')
-          .insert([{
+          .insert({
             upload_id: upload.id,
+            station_id: uploadData.stationId,  // Add the missing station_id field
             male_voters: uploadData.voterStatistics.maleVoters,
             female_voters: uploadData.voterStatistics.femaleVoters,
             wasted_ballots: uploadData.voterStatistics.wastedBallots,
             total_voters: uploadData.voterStatistics.totalVoters,
-          }]);
+          });
 
         if (voterStatsError) {
           console.error("Voter statistics insertion error:", voterStatsError);

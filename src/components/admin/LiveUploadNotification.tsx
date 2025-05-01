@@ -2,12 +2,13 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Bell } from "lucide-react";
+import { Bell, ChartBar, Users } from "lucide-react";
 
 const LiveUploadNotification = () => {
   // Set up a subscription for real-time notifications
   useEffect(() => {
-    const channel = supabase
+    // Channel for upload notifications
+    const uploadsChannel = supabase
       .channel('upload-notifications')
       .on('postgres_changes', { 
         event: 'INSERT', 
@@ -47,9 +48,57 @@ const LiveUploadNotification = () => {
         );
       })
       .subscribe();
+    
+    // Channel for voter statistics notifications
+    const statsChannel = supabase
+      .channel('stats-notifications')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'voter_statistics' 
+      }, async () => {
+        toast(
+          <div className="flex items-center gap-3">
+            <Users className="h-5 w-5 text-green-500" />
+            <div className="flex-1">
+              <p className="font-medium">Voter Statistics Updated</p>
+              <p className="text-sm text-muted-foreground">
+                New voter statistics have been recorded
+              </p>
+            </div>
+          </div>,
+          { duration: 4000 }
+        );
+      })
+      .subscribe();
+      
+    // Channel for results notifications
+    const resultsChannel = supabase
+      .channel('results-notifications')
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'results' 
+      }, async () => {
+        toast(
+          <div className="flex items-center gap-3">
+            <ChartBar className="h-5 w-5 text-purple-500" />
+            <div className="flex-1">
+              <p className="font-medium">Election Results Updated</p>
+              <p className="text-sm text-muted-foreground">
+                New voting results have been recorded
+              </p>
+            </div>
+          </div>,
+          { duration: 4000 }
+        );
+      })
+      .subscribe();
       
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(uploadsChannel);
+      supabase.removeChannel(statsChannel);
+      supabase.removeChannel(resultsChannel);
     };
   }, []);
 
