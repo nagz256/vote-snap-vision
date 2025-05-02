@@ -59,59 +59,70 @@ const Home = () => {
         .from('polling_stations')
         .select('*', { count: 'exact', head: true });
       
-      // Get uploads that have results associated with them
-      const { data: uploads } = await supabase
+      // Get uploads with valid results
+      const { data: uploadsData } = await supabase
         .from('uploads')
         .select('id, station_id');
       
-      // Filter to get unique station IDs with valid results
+      // For uploads with valid results, we need to check the results table
       const validStationIds = new Set();
       
-      if (uploads && uploads.length > 0) {
-        // For each upload, check if it has any results
-        for (const upload of uploads) {
+      if (uploadsData && uploadsData.length > 0) {
+        for (const upload of uploadsData) {
+          if (!upload.station_id) continue;
+          
           const { count } = await supabase
             .from('results')
             .select('*', { count: 'exact', head: true })
             .eq('upload_id', upload.id);
-            
-          if (count && count > 0 && upload.station_id) {
+          
+          if (count && count > 0) {
             validStationIds.add(upload.station_id);
           }
         }
       }
       
-      // Get distinct district counts
-      const { data: districtsData } = await supabase
-        .from('polling_stations')
-        .select('district');
+      // Only count districts with valid submissions
+      const validDistricts = new Set();
       
-      const uniqueDistricts = new Set();
-      if (districtsData) {
-        districtsData.forEach(station => {
-          if (station.district) uniqueDistricts.add(station.district);
+      if (validStationIds.size > 0) {
+        const { data: stationsData } = await supabase
+          .from('polling_stations')
+          .select('district')
+          .in('id', Array.from(validStationIds));
+        
+        if (stationsData) {
+          stationsData.forEach(station => {
+            if (station.district) validDistricts.add(station.district);
+          });
+        }
+      }
+      
+      // Get candidate count with actual votes
+      const { data: candidatesData } = await supabase
+        .from('results')
+        .select('candidate_id')
+        .gt('votes', 0);
+      
+      const uniqueCandidates = new Set();
+      if (candidatesData) {
+        candidatesData.forEach(result => {
+          if (result.candidate_id) uniqueCandidates.add(result.candidate_id);
         });
       }
       
-      // Get candidate count
-      const { data: candidates } = await supabase
-        .from('candidates')
-        .select('id');
-      
-      const candidateCount = candidates ? candidates.length : 0;
-      
       setStats({
         stationsSubmitted: validStationIds.size,
-        totalStations: totalStations || 10,
-        districtsCount: uniqueDistricts.size || 5,
-        candidatesCount: candidateCount
+        totalStations: totalStations || 0,
+        districtsCount: validDistricts.size,
+        candidatesCount: uniqueCandidates.size
       });
       
       console.log("Home stats updated:", {
         stationsSubmitted: validStationIds.size, 
         totalStations,
-        districtsCount: uniqueDistricts.size,
-        candidatesCount: candidateCount
+        districtsCount: validDistricts.size,
+        candidatesCount: uniqueCandidates.size
       });
     } catch (error) {
       console.error('Error fetching home stats:', error);

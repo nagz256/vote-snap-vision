@@ -1,12 +1,12 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Eye, RefreshCw, AlertCircle } from "lucide-react"; 
+import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -28,7 +28,6 @@ const PieCharts = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [hasData, setHasData] = useState(false);
-  const { getTotalVotes, resetData } = useVoteSnap();
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -36,32 +35,67 @@ const PieCharts = () => {
       setIsRefreshing(true);
       console.log("Fetching vote data for charts...");
       
-      const voteData = await getTotalVotes();
-      console.log("Fetched total votes data:", voteData);
+      // Get all results with candidate info
+      const { data: resultsData, error } = await supabase
+        .from('results')
+        .select(`
+          votes,
+          candidates (
+            id,
+            name
+          )
+        `)
+        .gt('votes', 0); // Only get results with votes > 0
       
-      if (voteData && voteData.length > 0) {
-        // Sort data by votes (descending) for better visualization
-        const sortedData = [...voteData].sort((a, b) => b.votes - a.votes);
-        setTotalVotesData(sortedData);
+      if (error) throw error;
+      
+      if (!resultsData || resultsData.length === 0) {
+        console.log("No vote data found");
+        setHasData(false);
+        setTotalVotesData([]);
+        setPercentageData([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Aggregate votes by candidate name
+      const votesByCandidate: Record<string, number> = {};
+      
+      resultsData.forEach(result => {
+        if (result.candidates && result.candidates.name && result.votes > 0) {
+          const candidateName = result.candidates.name;
+          votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
+        }
+      });
+      
+      // Convert to array format for the charts
+      const voteData = Object.entries(votesByCandidate)
+        .map(([name, votes]) => ({ name, votes }))
+        .sort((a, b) => b.votes - a.votes); // Sort by votes descending
+      
+      console.log("Processed vote data:", voteData);
+      
+      if (voteData.length > 0) {
+        setTotalVotesData(voteData);
         setHasData(true);
         
         // Calculate percentage data
-        const totalVotesSum = sortedData.reduce((sum, item) => sum + item.votes, 0);
-        const percentData = sortedData.map(item => ({
+        const totalVotesSum = voteData.reduce((sum, item) => sum + item.votes, 0);
+        const percentData = voteData.map(item => ({
           ...item,
           percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
         }));
         
         setPercentageData(percentData);
-        setLastRefresh(new Date());
-        
-        console.log("Chart data processed:", { sortedData, percentData });
       } else {
-        console.log("No vote data returned or empty array");
         setHasData(false);
         setTotalVotesData([]);
         setPercentageData([]);
       }
+      
+      setLastRefresh(new Date());
+      
     } catch (error) {
       console.error("Error fetching vote data:", error);
       toast({
@@ -82,53 +116,23 @@ const PieCharts = () => {
   useEffect(() => {
     fetchData();
     
-    // Set up interval to refresh data every 15 seconds
-    const refreshInterval = setInterval(() => {
-      fetchData();
-    }, 15000);
-    
-    return () => clearInterval(refreshInterval);
-  }, []);
-
-  const handleReset = async () => {
-    if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
-      try {
-        await resetData();
-        // Fetch data again after reset
+    // Set up subscription for real-time updates
+    const channel = supabase
+      .channel('chart-updates')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'results' 
+      }, () => {
+        console.log("Results changed, refreshing charts");
         fetchData();
-      } catch (error) {
-        console.error("Error resetting data:", error);
-      }
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="glass-card shadow-md">
-          <CardHeader>
-            <CardTitle>Vote Percentage</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center justify-center">
-              <p className="text-muted-foreground">Loading chart data...</p>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="glass-card shadow-md">
-          <CardHeader>
-            <CardTitle>Total Votes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center justify-center">
-              <p className="text-muted-foreground">Loading chart data...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+      })
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <div className="space-y-2">
@@ -148,14 +152,13 @@ const PieCharts = () => {
             <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
             {isRefreshing ? "Refreshing..." : "Refresh"}
           </Button>
-          <Button 
-            variant="destructive" 
+          <Button
+            variant="outline"
             size="sm"
+            asChild
             className="flex items-center gap-1"
-            onClick={handleReset}
           >
-            <RefreshCw size={14} />
-            Reset Data
+            <Link to="/data-management">Manage Data</Link>
           </Button>
         </div>
       </div>

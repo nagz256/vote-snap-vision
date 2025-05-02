@@ -1,11 +1,10 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ChartBarIcon, UsersIcon, MapPin, RefreshCw, Trash2 } from "lucide-react";
+import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 const StatsCards = () => {
   const [stats, setStats] = useState({
@@ -17,34 +16,44 @@ const StatsCards = () => {
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
-  const { resetData } = useVoteSnap();
 
   const fetchStats = async () => {
     try {
       setIsRefreshing(true);
       
-      // Get total stations
+      // Get total number of polling stations
       const { count: totalStations } = await supabase
         .from('polling_stations')
         .select('*', { count: 'exact', head: true });
       
-      // Get uploaded stations (distinct station IDs)
-      const { data: uploadedStationsData } = await supabase
+      // Get uploads with valid results
+      const { data: uploadsData } = await supabase
         .from('uploads')
-        .select('station_id');
-        
-      // Count unique station IDs
-      const uniqueStationIds = new Set(uploadedStationsData?.map(u => u.station_id) || []);
-      const uploadedStations = uniqueStationIds.size;
+        .select('id, station_id');
       
-      // Get voter statistics from the new table
+      // For uploads with valid results, we need to check the results table
+      const validStationIds = new Set();
+      
+      if (uploadsData && uploadsData.length > 0) {
+        for (const upload of uploadsData) {
+          if (!upload.station_id) continue;
+          
+          const { count } = await supabase
+            .from('results')
+            .select('*', { count: 'exact', head: true })
+            .eq('upload_id', upload.id);
+          
+          if (count && count > 0) {
+            validStationIds.add(upload.station_id);
+          }
+        }
+      }
+      
+      // Get voter statistics from the table
       const { data: voterStats } = await supabase
         .from('voter_statistics')
-        .select(`
-          male_voters,
-          female_voters,
-          total_voters
-        `);
+        .select('male_voters, female_voters, total_voters')
+        .in('station_id', validStationIds.size > 0 ? Array.from(validStationIds) : ['00000000-0000-0000-0000-000000000000']);
         
       let totalMale = 0;
       let totalFemale = 0;
@@ -58,7 +67,7 @@ const StatsCards = () => {
       
       setStats({
         totalStations: totalStations || 0,
-        uploadedStations: uploadedStations || 0,
+        uploadedStations: validStationIds.size || 0,
         maleVoters: totalMale,
         femaleVoters: totalFemale,
         totalVoters: totalVotes
@@ -68,7 +77,7 @@ const StatsCards = () => {
       
       console.log("Stats fetched successfully:", {
         totalStations,
-        uploadedStations,
+        uploadedStations: validStationIds.size,
         totalMale,
         totalFemale,
         totalVotes
@@ -147,20 +156,6 @@ const StatsCards = () => {
     };
   }, []);
 
-  const handleReset = async () => {
-    if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
-      try {
-        await resetData();
-        // After reset, fetch fresh stats
-        fetchStats();
-        toast.success("All data has been reset successfully");
-      } catch (error) {
-        console.error("Error resetting data:", error);
-        toast.error("Failed to reset data");
-      }
-    }
-  };
-
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -188,13 +183,12 @@ const StatsCards = () => {
             )}
           </Button>
           <Button 
-            variant="destructive" 
+            variant="outline" 
             size="sm" 
-            onClick={handleReset}
+            asChild
             className="flex items-center gap-2"
           >
-            <Trash2 size={14} />
-            Reset All Data
+            <Link to="/data-management">Manage Data</Link>
           </Button>
         </div>
       </div>

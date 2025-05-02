@@ -1,10 +1,9 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
@@ -207,6 +206,12 @@ const Admin = () => {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
           <div className="flex gap-4">
+            <Button variant="outline" asChild>
+              <Link to="/data-management" className="flex items-center gap-2">
+                <Settings size={16} />
+                Data Management
+              </Link>
+            </Button>
             <Button variant="outline" asChild>
               <Link to="/polling-stations">Manage Polling Stations</Link>
             </Button>

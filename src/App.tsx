@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,13 +11,10 @@ import Layout from "./components/layout/Layout";
 import Home from "./pages/Home";
 import Agent from "./pages/Agent";
 import Admin from "./pages/Admin";
+import DataManagement from "./pages/DataManagement";
 import PollingStations from "./pages/PollingStations";
 import NotFound from "./pages/NotFound";
 import Uploads from "./pages/Uploads";
-import { supabase } from "@/integrations/supabase/client";
-
-// Fix for React Native compatibility
-import { createClient } from '@supabase/supabase-js';
 
 const queryClient = new QueryClient();
 
@@ -32,6 +30,7 @@ const App = () => (
               <Route path="/" element={<Home />} />
               <Route path="/agent" element={<Agent />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/data-management" element={<DataManagement />} />
               <Route path="/polling-stations" element={<PollingStations />} />
               <Route path="/uploads" element={<Uploads />} />
               <Route path="*" element={<NotFound />} />
