@@ -59,17 +59,27 @@ const Home = () => {
         .from('polling_stations')
         .select('*', { count: 'exact', head: true });
       
-      // Get distinct submitted station counts
-      const { data: submittedStations } = await supabase
+      // Get uploads that have results associated with them
+      const { data: uploads } = await supabase
         .from('uploads')
-        .select('station_id')
-        .eq('uploaded_to_storage', true);
+        .select('id, station_id');
       
-      // Get unique station IDs
-      const uniqueStations = new Set();
-      submittedStations?.forEach(station => {
-        if (station.station_id) uniqueStations.add(station.station_id);
-      });
+      // Filter to get unique station IDs with valid results
+      const validStationIds = new Set();
+      
+      if (uploads && uploads.length > 0) {
+        // For each upload, check if it has any results
+        for (const upload of uploads) {
+          const { count } = await supabase
+            .from('results')
+            .select('*', { count: 'exact', head: true })
+            .eq('upload_id', upload.id);
+            
+          if (count && count > 0 && upload.station_id) {
+            validStationIds.add(upload.station_id);
+          }
+        }
+      }
       
       // Get distinct district counts
       const { data: districtsData } = await supabase
@@ -77,30 +87,31 @@ const Home = () => {
         .select('district');
       
       const uniqueDistricts = new Set();
-      districtsData?.forEach(station => {
-        if (station.district) uniqueDistricts.add(station.district);
-      });
+      if (districtsData) {
+        districtsData.forEach(station => {
+          if (station.district) uniqueDistricts.add(station.district);
+        });
+      }
       
       // Get candidate count
-      const { data: candidatesData } = await supabase
-        .from('results')
-        .select(`
-          candidate_id,
-          candidates (
-            name
-          )
-        `);
+      const { data: candidates } = await supabase
+        .from('candidates')
+        .select('id');
       
-      const uniqueCandidates = new Set();
-      candidatesData?.forEach(result => {
-        if (result.candidate_id) uniqueCandidates.add(result.candidate_id);
-      });
+      const candidateCount = candidates ? candidates.length : 0;
       
       setStats({
-        stationsSubmitted: uniqueStations.size,
+        stationsSubmitted: validStationIds.size,
         totalStations: totalStations || 10,
         districtsCount: uniqueDistricts.size || 5,
-        candidatesCount: uniqueCandidates.size || 0
+        candidatesCount: candidateCount
+      });
+      
+      console.log("Home stats updated:", {
+        stationsSubmitted: validStationIds.size, 
+        totalStations,
+        districtsCount: uniqueDistricts.size,
+        candidatesCount: candidateCount
       });
     } catch (error) {
       console.error('Error fetching home stats:', error);

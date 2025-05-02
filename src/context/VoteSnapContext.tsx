@@ -175,7 +175,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const resetData = async () => {
+  const resetData = async (): Promise<void> => {
     try {
       console.log("Resetting all data...");
       
@@ -219,12 +219,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       await refreshAvailableStations();
       
       toast.success("All data has been reset successfully.");
-      
-      return true;
     } catch (error) {
       console.error("Error resetting data:", error);
       toast.error("Failed to reset data. Please try again.");
-      return false;
+      throw error;
     }
   };
 

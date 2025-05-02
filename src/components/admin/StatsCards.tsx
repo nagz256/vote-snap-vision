@@ -149,10 +149,14 @@ const StatsCards = () => {
 
   const handleReset = async () => {
     if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
-      const success = await resetData();
-      if (success) {
+      try {
+        await resetData();
+        // After reset, fetch fresh stats
         fetchStats();
         toast.success("All data has been reset successfully");
+      } catch (error) {
+        console.error("Error resetting data:", error);
+        toast.error("Failed to reset data");
       }
     }
   };

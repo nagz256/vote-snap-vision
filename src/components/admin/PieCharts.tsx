@@ -92,9 +92,12 @@ const PieCharts = () => {
 
   const handleReset = async () => {
     if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
-      const success = await resetData();
-      if (success) {
+      try {
+        await resetData();
+        // Fetch data again after reset
         fetchData();
+      } catch (error) {
+        console.error("Error resetting data:", error);
       }
     }
   };
