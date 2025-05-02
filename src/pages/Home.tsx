@@ -1,8 +1,112 @@
 
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const Home = () => {
+  const [stats, setStats] = useState({
+    stationsSubmitted: 0,
+    totalStations: 0,
+    districtsCount: 0,
+    candidatesCount: 0
+  });
+
+  useEffect(() => {
+    fetchHomeStats();
+
+    // Set up subscription for real-time updates
+    const channel = supabase
+      .channel('home-stats-updates')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'uploads' 
+      }, () => {
+        fetchHomeStats();
+      })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'polling_stations' 
+      }, () => {
+        fetchHomeStats();
+      })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'candidates' 
+      }, () => {
+        fetchHomeStats();
+      })
+      .subscribe();
+      
+    // Also set up a periodic refresh as backup
+    const refreshInterval = setInterval(() => {
+      fetchHomeStats();
+    }, 15000);
+    
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(refreshInterval);
+    };
+  }, []);
+
+  const fetchHomeStats = async () => {
+    try {
+      // Get total number of polling stations
+      const { count: totalStations } = await supabase
+        .from('polling_stations')
+        .select('*', { count: 'exact', head: true });
+      
+      // Get distinct submitted station counts
+      const { data: submittedStations } = await supabase
+        .from('uploads')
+        .select('station_id')
+        .eq('uploaded_to_storage', true);
+      
+      // Get unique station IDs
+      const uniqueStations = new Set();
+      submittedStations?.forEach(station => {
+        if (station.station_id) uniqueStations.add(station.station_id);
+      });
+      
+      // Get distinct district counts
+      const { data: districtsData } = await supabase
+        .from('polling_stations')
+        .select('district');
+      
+      const uniqueDistricts = new Set();
+      districtsData?.forEach(station => {
+        if (station.district) uniqueDistricts.add(station.district);
+      });
+      
+      // Get candidate count
+      const { data: candidatesData } = await supabase
+        .from('results')
+        .select(`
+          candidate_id,
+          candidates (
+            name
+          )
+        `);
+      
+      const uniqueCandidates = new Set();
+      candidatesData?.forEach(result => {
+        if (result.candidate_id) uniqueCandidates.add(result.candidate_id);
+      });
+      
+      setStats({
+        stationsSubmitted: uniqueStations.size,
+        totalStations: totalStations || 10,
+        districtsCount: uniqueDistricts.size || 5,
+        candidatesCount: uniqueCandidates.size || 0
+      });
+    } catch (error) {
+      console.error('Error fetching home stats:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center space-y-10 py-10">
       {/* Hero section */}
@@ -30,19 +134,19 @@ const Home = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Stations</h3>
-            <p className="text-3xl font-bold text-purple-dark">0 / 10</p>
+            <p className="text-3xl font-bold text-purple-dark">{stats.stationsSubmitted} / {stats.totalStations}</p>
             <p className="text-sm text-foreground/70 mt-1">Results Submitted</p>
           </div>
           
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Districts</h3>
-            <p className="text-3xl font-bold text-purple-dark">5</p>
+            <p className="text-3xl font-bold text-purple-dark">{stats.districtsCount}</p>
             <p className="text-sm text-foreground/70 mt-1">Being Monitored</p>
           </div>
           
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Candidates</h3>
-            <p className="text-3xl font-bold text-purple-dark">0</p>
+            <p className="text-3xl font-bold text-purple-dark">{stats.candidatesCount}</p>
             <p className="text-sm text-foreground/70 mt-1">In Current Election</p>
           </div>
         </div>

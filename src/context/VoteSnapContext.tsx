@@ -27,6 +27,7 @@ interface VoteSnapContextType {
     error?: string;
   }>;
   getVotesByGender: () => Promise<{ male: number; female: number; total: number }>;
+  resetData: () => Promise<void>;
 }
 
 const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined);
@@ -106,6 +107,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       // Check if we have any uploads at all
       if (!uploadsData || uploadsData.length === 0) {
         setUploads([]);
+        console.log("No uploads found");
         return;
       }
 
@@ -139,8 +141,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         })
       );
 
-      // Filter out uploads that don't have a valid station
-      const validUploads = uploadsWithResults.filter(upload => upload.station && upload.station.name);
+      // Filter out uploads that don't have a valid station or have empty results
+      const validUploads = uploadsWithResults
+        .filter(upload => upload.station && upload.station.name)
+        .filter(upload => upload.results && upload.results.length > 0);
       
       setUploads(validUploads);
       console.log("Valid uploads fetched:", validUploads);
@@ -168,6 +172,59 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       setAvailableStations(stations);
     } catch (error) {
       console.error("Error refreshing available stations:", error);
+    }
+  };
+
+  const resetData = async () => {
+    try {
+      console.log("Resetting all data...");
+      
+      // Delete all results first due to foreign key constraints
+      const { error: resultsError } = await supabase
+        .from('results')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
+      
+      if (resultsError) {
+        console.error("Error deleting results:", resultsError);
+        throw resultsError;
+      }
+      
+      // Delete all voter statistics
+      const { error: statsError } = await supabase
+        .from('voter_statistics')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
+      
+      if (statsError) {
+        console.error("Error deleting voter statistics:", statsError);
+        throw statsError;
+      }
+      
+      // Delete all uploads
+      const { error: uploadsError } = await supabase
+        .from('uploads')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
+      
+      if (uploadsError) {
+        console.error("Error deleting uploads:", uploadsError);
+        throw uploadsError;
+      }
+      
+      // Reset local state
+      setUploads([]);
+      
+      // Refresh stations
+      await refreshAvailableStations();
+      
+      toast.success("All data has been reset successfully.");
+      
+      return true;
+    } catch (error) {
+      console.error("Error resetting data:", error);
+      toast.error("Failed to reset data. Please try again.");
+      return false;
     }
   };
 
@@ -267,39 +324,35 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         throw submittedError;
       }
 
-      if (!submittedStations || submittedStations.length === 0) {
-        console.log("No submitted stations found, fetching all stations");
-        const { data: allStations, error: allError } = await supabase
-          .from('polling_stations')
-          .select('*');
-          
-        if (allError) {
-          console.error("Error fetching all stations:", allError);
-          throw allError;
-        }
+      // Get all stations whether they've been submitted or not
+      const { data: allStations, error: allError } = await supabase
+        .from('polling_stations')
+        .select('*')
+        .order('name', { ascending: true });
         
-        console.log("Available stations:", allStations);
+      if (allError) {
+        console.error("Error fetching all stations:", allError);
+        throw allError;
+      }
+      
+      console.log("All stations:", allStations);
+      
+      if (!submittedStations || submittedStations.length === 0) {
+        console.log("No submitted stations found, returning all stations");
         return allStations || [];
       }
 
-      const submittedIds = submittedStations.map(s => s.station_id);
+      // Get unique station IDs that have been submitted
+      const submittedIds = [...new Set(submittedStations.map(s => s.station_id))];
       console.log("Submitted station IDs:", submittedIds);
 
-      const query = supabase.from('polling_stations').select('*');
-      
-      if (submittedIds.length > 0) {
-        query.not('id', 'in', `(${submittedIds.join(',')})`);
-      }
+      // Filter out submitted stations if specified
+      const availableStations = allStations.filter(station => 
+        !submittedIds.includes(station.id)
+      );
 
-      const { data: stations, error: stationsError } = await query;
-      
-      if (stationsError) {
-        console.error("Error fetching available stations:", stationsError);
-        throw stationsError;
-      }
-
-      console.log("Available stations after filtering:", stations);
-      return stations || [];
+      console.log("Available stations after filtering:", availableStations);
+      return availableStations || [];
     } catch (error) {
       console.error("Error in getAvailableStations:", error);
       return [];
@@ -327,12 +380,22 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         return [];
       }
 
+      // Filter out any invalid results
+      const validResults = results.filter(result => 
+        result.candidates && 
+        result.candidates.name && 
+        typeof result.votes === 'number'
+      );
+      
+      if (validResults.length === 0) {
+        console.log("No valid results found");
+        return [];
+      }
+
       const totalVotes: Record<string, number> = {};
-      results.forEach(result => {
-        if (result.candidates && result.candidates.name) {
-          const candidateName = result.candidates.name;
-          totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
-        }
+      validResults.forEach(result => {
+        const candidateName = result.candidates.name;
+        totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
       });
 
       const formattedResults = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
@@ -357,8 +420,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         
       if (error) throw error;
       
+      if (!voterStats || voterStats.length === 0) {
+        console.log("No voter statistics found");
+        return { male: 0, female: 0, total: 0 };
+      }
+      
       // Sum up the values across all polling stations
-      const totals = voterStats?.reduce((acc, stat) => {
+      const totals = voterStats.reduce((acc, stat) => {
         return {
           male: acc.male + (stat.male_voters || 0),
           female: acc.female + (stat.female_voters || 0),
@@ -366,7 +434,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         };
       }, { male: 0, female: 0, total: 0 });
       
-      return totals || { male: 0, female: 0, total: 0 };
+      return totals;
     } catch (error) {
       console.error("Error getting votes by gender:", error);
       return { male: 0, female: 0, total: 0 };
@@ -394,7 +462,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         };
       }
       
-      if (!data.results || data.results.length === 0) {
+      if (!data || !data.results || data.results.length === 0) {
         toast.error("No results could be extracted. Please take a clearer photo or enter results manually.");
         return { 
           results: [], 
@@ -403,11 +471,22 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         };
       }
       
+      // Filter out any results that might be voter statistics mistakenly extracted as candidates
+      const filteredResults = data.results.filter(result => 
+        !result.candidateName.toLowerCase().includes('male') && 
+        !result.candidateName.toLowerCase().includes('female') &&
+        !result.candidateName.toLowerCase().includes('waste') &&
+        !result.candidateName.toLowerCase().includes('ballot') &&
+        !result.candidateName.toLowerCase().includes('total')
+      );
+      
+      console.log("Filtered OCR results:", filteredResults);
+      
       return {
-        results: data.results,
+        results: filteredResults.length > 0 ? filteredResults : [],
         voterStats: data.voterStats,
-        success: data.success || true,
-        error: data.error
+        success: filteredResults.length > 0,
+        error: filteredResults.length === 0 ? "Could not identify candidate results" : undefined
       };
     } catch (error: any) {
       console.error("Error in processDRForm:", error);
@@ -432,7 +511,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         refreshAvailableStations,
         getTotalVotes,
         processDRForm,
-        getVotesByGender
+        getVotesByGender,
+        resetData
       }}
     >
       {children}

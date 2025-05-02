@@ -5,11 +5,21 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recha
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Eye, RefreshCw } from "lucide-react"; 
+import { Eye, RefreshCw, AlertCircle } from "lucide-react"; 
 import { Button } from "@/components/ui/button";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
+
+const EmptyDataDisplay = () => (
+  <div className="flex flex-col items-center justify-center h-full py-8">
+    <AlertCircle className="text-amber-500 mb-2" size={32} />
+    <h3 className="text-lg font-medium">No Data Available</h3>
+    <p className="text-sm text-muted-foreground text-center mt-1">
+      Submit form data from the Agent Portal to see results here.
+    </p>
+  </div>
+);
 
 const PieCharts = () => {
   const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
@@ -17,7 +27,8 @@ const PieCharts = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const { getTotalVotes } = useVoteSnap();
+  const [hasData, setHasData] = useState(false);
+  const { getTotalVotes, resetData } = useVoteSnap();
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -32,6 +43,7 @@ const PieCharts = () => {
         // Sort data by votes (descending) for better visualization
         const sortedData = [...voteData].sort((a, b) => b.votes - a.votes);
         setTotalVotesData(sortedData);
+        setHasData(true);
         
         // Calculate percentage data
         const totalVotesSum = sortedData.reduce((sum, item) => sum + item.votes, 0);
@@ -46,22 +58,9 @@ const PieCharts = () => {
         console.log("Chart data processed:", { sortedData, percentData });
       } else {
         console.log("No vote data returned or empty array");
-        // Use placeholder data when no real data is available
-        const placeholderData = [
-          { name: "No Data Available", votes: 1 }
-        ];
-        
-        setTotalVotesData(placeholderData);
-        setPercentageData(placeholderData.map(item => ({
-          ...item,
-          percentage: "100.0"
-        })));
-        
-        toast({
-          title: "No vote data available",
-          description: "There are no voting results to display yet.",
-          variant: "default"
-        });
+        setHasData(false);
+        setTotalVotesData([]);
+        setPercentageData([]);
       }
     } catch (error) {
       console.error("Error fetching vote data:", error);
@@ -71,16 +70,9 @@ const PieCharts = () => {
         variant: "destructive"
       });
       
-      // Use placeholder data on error
-      const errorData = [
-        { name: "Error Loading Data", votes: 1 }
-      ];
-      
-      setTotalVotesData(errorData);
-      setPercentageData(errorData.map(item => ({
-        ...item,
-        percentage: "100.0"
-      })));
+      setHasData(false);
+      setTotalVotesData([]);
+      setPercentageData([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -98,24 +90,13 @@ const PieCharts = () => {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-    
-    return (
-      <text 
-        x={x} 
-        y={y} 
-        fill="white" 
-        textAnchor={x > cx ? 'start' : 'end'} 
-        dominantBaseline="central"
-        fontSize="12"
-      >
-        {`${name}: ${value}`}
-      </text>
-    );
+  const handleReset = async () => {
+    if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
+      const success = await resetData();
+      if (success) {
+        fetchData();
+      }
+    }
   };
 
   if (isLoading) {
@@ -145,8 +126,6 @@ const PieCharts = () => {
       </div>
     );
   }
-  
-  const noData = totalVotesData.length === 0 || (totalVotesData.length === 1 && totalVotesData[0].name === "No Data Available");
 
   return (
     <div className="space-y-2">
@@ -155,16 +134,27 @@ const PieCharts = () => {
           <Eye size={14} className="mr-1" />
           Last updated: {lastRefresh.toLocaleTimeString()}
         </div>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="flex items-center gap-1"
-          onClick={fetchData}
-          disabled={isRefreshing}
-        >
-          <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="flex items-center gap-1"
+            onClick={fetchData}
+            disabled={isRefreshing}
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm"
+            className="flex items-center gap-1"
+            onClick={handleReset}
+          >
+            <RefreshCw size={14} />
+            Reset Data
+          </Button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -175,7 +165,7 @@ const PieCharts = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {!noData ? (
+              {hasData && percentageData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -198,9 +188,7 @@ const PieCharts = () => {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-muted-foreground">No vote data available</p>
-                </div>
+                <EmptyDataDisplay />
               )}
             </div>
           </CardContent>
@@ -213,7 +201,7 @@ const PieCharts = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {!noData ? (
+              {hasData && totalVotesData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -236,9 +224,7 @@ const PieCharts = () => {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-muted-foreground">No vote data available</p>
-                </div>
+                <EmptyDataDisplay />
               )}
             </div>
           </CardContent>

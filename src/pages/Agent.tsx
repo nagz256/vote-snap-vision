@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, Upload, X, RefreshCw } from "lucide-react";
+import { Camera, Upload, X, RefreshCw, Trash2 } from "lucide-react";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
@@ -28,6 +28,7 @@ const Agent = () => {
   const [error, setError] = useState<string | null>(null);
   const [availableStations, setAvailableStations] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isProcessingImage, setIsProcessingImage] = useState<boolean>(false);
   const [resultsStep, setResultsStep] = useState<"upload" | "scanning" | "verify" | "manual">("upload");
   
@@ -40,7 +41,14 @@ const Agent = () => {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { addUpload, getAvailableStations, isAdmin, refreshAvailableStations, processDRForm } = useVoteSnap();
+  const { 
+    addUpload, 
+    getAvailableStations, 
+    isAdmin, 
+    refreshAvailableStations, 
+    processDRForm,
+    resetData
+  } = useVoteSnap();
   const { toast } = useToast();
 
   // Calculate total voters whenever the individual voter counts change
@@ -57,14 +65,20 @@ const Agent = () => {
 
   const refreshStations = async () => {
     try {
+      setIsRefreshing(true);
       const stations = await getAvailableStations();
+      if (stations.length === 0) {
+        sonnerToast.info("No available polling stations found. All may have been submitted already.");
+      }
       setAvailableStations(stations);
+      setIsRefreshing(false);
     } catch (error) {
       console.error("Error fetching available stations:", error);
       toast({
         title: "Error",
         description: "Failed to load available stations.",
       });
+      setIsRefreshing(false);
     }
   };
 
@@ -128,7 +142,10 @@ const Agent = () => {
           { candidateName: "", votes: 0 }
         ]);
         setResultsStep("manual");
-        sonnerToast.warning("Couldn't extract data automatically. Please enter results manually.", { duration: 5000 });
+        sonnerToast.warning(
+          response.error || "Couldn't extract data automatically. Please enter results manually.", 
+          { duration: 5000 }
+        );
       }
     } catch (err) {
       console.error("OCR processing error:", err);
@@ -184,6 +201,15 @@ const Agent = () => {
     setError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+  
+  const handleReset = async () => {
+    if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
+      await resetData();
+      refreshStations();
+      resetForm();
+      sonnerToast.success("All data has been reset successfully.");
     }
   };
 
@@ -280,8 +306,38 @@ const Agent = () => {
   return (
     <div className="container mx-auto p-4">
       <Card className="glass-card">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Submit DR Form</CardTitle>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={refreshStations} 
+              disabled={isRefreshing}
+              className="flex items-center gap-1"
+            >
+              {isRefreshing ? (
+                <>
+                  <RefreshCw size={14} className="mr-1 animate-spin" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={14} className="mr-1" />
+                  Refresh Stations
+                </>
+              )}
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={handleReset}
+              className="flex items-center gap-1"
+            >
+              <Trash2 size={14} className="mr-1" />
+              Reset All Data
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Station Selection */}
@@ -294,13 +350,24 @@ const Agent = () => {
                 <SelectValue placeholder="Select a station" />
               </SelectTrigger>
               <SelectContent>
-                {availableStations.map((station: any) => (
-                  <SelectItem key={station.id} value={station.id}>
-                    {station.name} - {station.district}
+                {availableStations.length > 0 ? (
+                  availableStations.map((station: any) => (
+                    <SelectItem key={station.id} value={station.id}>
+                      {station.name} - {station.district}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="empty" disabled>
+                    No available stations found
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
+            {availableStations.length === 0 && (
+              <p className="text-sm text-amber-600">
+                No available polling stations found. Use the refresh button or reset the data.
+              </p>
+            )}
           </div>
 
           {/* Image Upload */}

@@ -16,8 +16,7 @@ async function simpleOcrProcessing(imageUrl) {
   console.log("Starting simple OCR processing...");
   
   // Since we can't use browser-based Tesseract.js in Deno environment,
-  // we'll return mock results but with a proper structure
-  // This would be replaced with actual OCR processing in a production environment
+  // we'll return mock results with a proper structure for demo purposes
   
   return {
     text: "Sample Candidate A: 150\nSample Candidate B: 120\nMale voters: 180\nFemale voters: 140\nWasted ballots: 5",
@@ -56,6 +55,15 @@ function extractCandidateResults(text) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line || line.length < 3) continue;
+    
+    // Skip lines with voter statistics terms
+    if (line.toLowerCase().includes('male') || 
+        line.toLowerCase().includes('female') || 
+        line.toLowerCase().includes('waste') ||
+        line.toLowerCase().includes('ballot') ||
+        line.toLowerCase().includes('total voter')) {
+      continue;
+    }
     
     // Try each pattern
     let matched = false;
@@ -98,6 +106,15 @@ function extractCandidateResults(text) {
     // Find lines with numbers, assume they might be vote counts
     const potentialResults = [];
     for (const line of lines) {
+      // Skip lines with voter statistics terms
+      if (line.toLowerCase().includes('male') || 
+          line.toLowerCase().includes('female') || 
+          line.toLowerCase().includes('waste') ||
+          line.toLowerCase().includes('ballot') ||
+          line.toLowerCase().includes('total voter')) {
+        continue;
+      }
+      
       const parts = line.split(/\s{2,}|\t/); // Split by multiple spaces or tabs
       
       if (parts.length >= 2) {

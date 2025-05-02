@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
+import { ChartBarIcon, UsersIcon, MapPin, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const StatsCards = () => {
   const [stats, setStats] = useState({
@@ -16,6 +17,7 @@ const StatsCards = () => {
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const { resetData } = useVoteSnap();
 
   const fetchStats = async () => {
     try {
@@ -49,9 +51,9 @@ const StatsCards = () => {
       let totalVotes = 0;
       
       if (voterStats && voterStats.length > 0) {
-        totalMale = voterStats.reduce((sum, stat) => sum + stat.male_voters, 0);
-        totalFemale = voterStats.reduce((sum, stat) => sum + stat.female_voters, 0);
-        totalVotes = voterStats.reduce((sum, stat) => sum + stat.total_voters, 0);
+        totalMale = voterStats.reduce((sum, stat) => sum + (stat.male_voters || 0), 0);
+        totalFemale = voterStats.reduce((sum, stat) => sum + (stat.female_voters || 0), 0);
+        totalVotes = voterStats.reduce((sum, stat) => sum + (stat.total_voters || 0), 0);
       }
       
       setStats({
@@ -73,6 +75,7 @@ const StatsCards = () => {
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
+      toast.error("Failed to fetch statistics");
     } finally {
       setIsRefreshing(false);
     }
@@ -144,31 +147,52 @@ const StatsCards = () => {
     };
   }, []);
 
+  const handleReset = async () => {
+    if (window.confirm("Are you sure you want to reset all data? This will delete ALL submitted results.")) {
+      const success = await resetData();
+      if (success) {
+        fetchStats();
+        toast.success("All data has been reset successfully");
+      }
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <div className="text-sm text-muted-foreground">
           Last updated: {lastUpdated.toLocaleTimeString()}
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={fetchStats} 
-          disabled={isRefreshing}
-          className="flex items-center gap-2"
-        >
-          {isRefreshing ? (
-            <>
-              <RefreshCw size={14} className="animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw size={14} />
-              Refresh
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchStats} 
+            disabled={isRefreshing}
+            className="flex items-center gap-2"
+          >
+            {isRefreshing ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw size={14} />
+                Refresh
+              </>
+            )}
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={handleReset}
+            className="flex items-center gap-2"
+          >
+            <Trash2 size={14} />
+            Reset All Data
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -234,7 +258,10 @@ const StatsCards = () => {
             <div className="flex items-baseline justify-between">
               <p className="text-2xl font-bold">{stats.totalVoters.toLocaleString()}</p>
               <p className="text-sm text-muted-foreground">
-                {Math.round(stats.totalVoters / Math.max(stats.uploadedStations, 1))} avg. per station
+                {stats.uploadedStations > 0 
+                  ? `${Math.round(stats.totalVoters / stats.uploadedStations)} avg. per station`
+                  : "No stations uploaded"
+                }
               </p>
             </div>
           </CardContent>
