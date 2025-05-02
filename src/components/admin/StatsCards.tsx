@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,7 +13,9 @@ const StatsCards = () => {
     uploadedStations: 0,
     maleVoters: 0,
     femaleVoters: 0,
-    totalVoters: 0
+    totalVoters: 0,
+    totalVotesCounted: 0,
+    wastedBallots: 0
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -32,7 +35,7 @@ const StatsCards = () => {
         .select('id, station_id');
       
       // For uploads with valid results, we need to check the results table
-      const validStationIds = new Set();
+      const validStationIds = new Set<string>();
       
       if (uploadsData && uploadsData.length > 0) {
         for (const upload of uploadsData) {
@@ -48,21 +51,31 @@ const StatsCards = () => {
           }
         }
       }
+
+      // Get total votes from results
+      let totalVotesCounted = 0;
+      const { data: resultsData } = await supabase
+        .from('results')
+        .select('votes');
+
+      if (resultsData && resultsData.length > 0) {
+        totalVotesCounted = resultsData.reduce((sum, result) => sum + (result.votes || 0), 0);
+      }
       
       // Get voter statistics from the table
       const { data: voterStats } = await supabase
         .from('voter_statistics')
-        .select('male_voters, female_voters, total_voters')
-        .in('station_id', validStationIds.size > 0 ? Array.from(validStationIds) : ['00000000-0000-0000-0000-000000000000']);
+        .select('male_voters, female_voters, total_voters, wasted_ballots')
+        .in('station_id', Array.from(validStationIds).length > 0 ? Array.from(validStationIds) : ['00000000-0000-0000-0000-000000000000']);
         
       let totalMale = 0;
       let totalFemale = 0;
-      let totalVotes = 0;
+      let wastedBallots = 0;
       
       if (voterStats && voterStats.length > 0) {
         totalMale = voterStats.reduce((sum, stat) => sum + (stat.male_voters || 0), 0);
         totalFemale = voterStats.reduce((sum, stat) => sum + (stat.female_voters || 0), 0);
-        totalVotes = voterStats.reduce((sum, stat) => sum + (stat.total_voters || 0), 0);
+        wastedBallots = voterStats.reduce((sum, stat) => sum + (stat.wasted_ballots || 0), 0);
       }
       
       setStats({
@@ -70,7 +83,9 @@ const StatsCards = () => {
         uploadedStations: validStationIds.size || 0,
         maleVoters: totalMale,
         femaleVoters: totalFemale,
-        totalVoters: totalVotes
+        totalVoters: totalVotesCounted,
+        totalVotesCounted,
+        wastedBallots
       });
       
       setLastUpdated(new Date());
@@ -80,7 +95,8 @@ const StatsCards = () => {
         uploadedStations: validStationIds.size,
         totalMale,
         totalFemale,
-        totalVotes
+        totalVotesCounted,
+        wastedBallots
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -254,10 +270,10 @@ const StatsCards = () => {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline justify-between">
-              <p className="text-2xl font-bold">{stats.totalVoters.toLocaleString()}</p>
+              <p className="text-2xl font-bold">{stats.totalVotesCounted.toLocaleString()}</p>
               <p className="text-sm text-muted-foreground">
                 {stats.uploadedStations > 0 
-                  ? `${Math.round(stats.totalVoters / stats.uploadedStations)} avg. per station`
+                  ? `${Math.round(stats.totalVotesCounted / stats.uploadedStations)} avg. per station`
                   : "No stations uploaded"
                 }
               </p>

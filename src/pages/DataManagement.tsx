@@ -65,9 +65,14 @@ const DataManagement = () => {
           
         toast.success("All data has been successfully deleted");
       } else {
-        // Delete specific table data
+        // Delete specific table data - we need to use the actual table name, not the ID
+        const tableName = tables.find(t => t.id === selectedTable)?.id;
+        if (!tableName) {
+          throw new Error("Invalid table selected");
+        }
+        
         const { error } = await supabase
-          .from(selectedTable)
+          .from(tableName)
           .delete()
           .neq('id', '00000000-0000-0000-0000-000000000000');
           

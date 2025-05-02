@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -14,6 +14,14 @@ interface VoterStatisticsProps {
 }
 
 const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters, onUpdate }: VoterStatisticsProps) => {
+  // Automatically update total voters whenever gender counts change
+  useEffect(() => {
+    const calculatedTotal = maleVoters + femaleVoters;
+    if (calculatedTotal !== totalVoters) {
+      onUpdate('totalVoters', calculatedTotal);
+    }
+  }, [maleVoters, femaleVoters, totalVoters, onUpdate]);
+
   return (
     <Card className="glass-card shadow-md hover:shadow-lg transition-shadow mt-6">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -24,7 +32,7 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
           </HoverCardTrigger>
           <HoverCardContent className="w-80 text-sm bg-background">
             <p>Enter the number of male and female voters along with wasted ballots from this polling station. 
-            The total will be calculated automatically.</p>
+            The total will be calculated automatically from male and female voters.</p>
           </HoverCardContent>
         </HoverCard>
       </CardHeader>
