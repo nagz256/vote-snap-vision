@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -36,6 +37,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   const [availableStations, setAvailableStations] = useState<any[]>([]);
 
   useEffect(() => {
+    // Clear any incorrect data on app start
     if (isAdmin) {
       fetchUploads();
       
@@ -101,6 +103,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      // Check if we have any uploads at all
+      if (!uploadsData || uploadsData.length === 0) {
+        setUploads([]);
+        return;
+      }
+
       const uploadsWithResults = await Promise.all(
         uploadsData.map(async (upload) => {
           const { data: resultsData } = await supabase
@@ -114,6 +122,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             `)
             .eq('upload_id', upload.id);
 
+          // Only include uploads that have results
           const formattedResults = resultsData?.map(result => ({
             candidateName: result.candidates.name,
             votes: result.votes
@@ -130,9 +139,14 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         })
       );
 
-      setUploads(uploadsWithResults as Upload[]);
+      // Filter out uploads that don't have a valid station
+      const validUploads = uploadsWithResults.filter(upload => upload.station && upload.station.name);
+      
+      setUploads(validUploads);
+      console.log("Valid uploads fetched:", validUploads);
     } catch (error) {
       console.error("Error in fetchUploads:", error);
+      setUploads([]);
     }
   };
 
@@ -189,7 +203,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           .from('voter_statistics')
           .insert({
             upload_id: upload.id,
-            station_id: uploadData.stationId,  // Add the missing station_id field
+            station_id: uploadData.stationId,
             male_voters: uploadData.voterStatistics.maleVoters,
             female_voters: uploadData.voterStatistics.femaleVoters,
             wasted_ballots: uploadData.voterStatistics.wastedBallots,
@@ -294,7 +308,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getTotalVotes = async () => {
     try {
-      const { data: results } = await supabase
+      const { data: results, error } = await supabase
         .from('results')
         .select(`
           votes,
@@ -302,14 +316,28 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             name
           )
         `);
+        
+      if (error) {
+        console.error("Error fetching results:", error);
+        return [];
+      }
+      
+      if (!results || results.length === 0) {
+        console.log("No results found in the database");
+        return [];
+      }
 
       const totalVotes: Record<string, number> = {};
-      results?.forEach(result => {
-        const candidateName = result.candidates.name;
-        totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+      results.forEach(result => {
+        if (result.candidates && result.candidates.name) {
+          const candidateName = result.candidates.name;
+          totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+        }
       });
 
-      return Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+      const formattedResults = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+      console.log("Total votes formatted:", formattedResults);
+      return formattedResults;
     } catch (error) {
       console.error("Error getting total votes:", error);
       return [];

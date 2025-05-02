@@ -5,7 +5,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recha
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Eye } from "lucide-react"; // Import Eye icon for refresh visibility
+import { Eye, RefreshCw } from "lucide-react"; 
+import { Button } from "@/components/ui/button";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -14,13 +15,14 @@ const PieCharts = () => {
   const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
   const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const { getTotalVotes } = useVoteSnap();
   const { toast } = useToast();
 
   const fetchData = async () => {
     try {
-      setIsLoading(true);
+      setIsRefreshing(true);
       console.log("Fetching vote data for charts...");
       
       const voteData = await getTotalVotes();
@@ -81,6 +83,7 @@ const PieCharts = () => {
       })));
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -147,9 +150,21 @@ const PieCharts = () => {
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end items-center text-sm text-muted-foreground mb-2">
-        <Eye size={14} className="mr-1" />
-        Last updated: {lastRefresh.toLocaleTimeString()}
+      <div className="flex justify-between items-center text-sm text-muted-foreground mb-2">
+        <div className="flex items-center">
+          <Eye size={14} className="mr-1" />
+          Last updated: {lastRefresh.toLocaleTimeString()}
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="flex items-center gap-1"
+          onClick={fetchData}
+          disabled={isRefreshing}
+        >
+          <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+          {isRefreshing ? "Refreshing..." : "Refresh"}
+        </Button>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

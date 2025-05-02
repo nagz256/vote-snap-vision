@@ -1,11 +1,8 @@
 
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useVoteSnap } from "@/context/VoteSnapContext";
 
 const Home = () => {
-  const { uploads } = useVoteSnap();
-  
   return (
     <div className="flex flex-col items-center justify-center space-y-10 py-10">
       {/* Hero section */}
@@ -33,7 +30,7 @@ const Home = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Stations</h3>
-            <p className="text-3xl font-bold text-purple-dark">{uploads.length} / {10}</p>
+            <p className="text-3xl font-bold text-purple-dark">0 / 10</p>
             <p className="text-sm text-foreground/70 mt-1">Results Submitted</p>
           </div>
           
@@ -45,7 +42,7 @@ const Home = () => {
           
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Candidates</h3>
-            <p className="text-3xl font-bold text-purple-dark">4</p>
+            <p className="text-3xl font-bold text-purple-dark">0</p>
             <p className="text-sm text-foreground/70 mt-1">In Current Election</p>
           </div>
         </div>

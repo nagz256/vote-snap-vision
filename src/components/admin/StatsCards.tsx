@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 import { useState, useEffect } from "react";
@@ -31,7 +32,7 @@ const StatsCards = () => {
         .select('station_id');
         
       // Count unique station IDs
-      const uniqueStationIds = new Set(uploadedStationsData?.map(u => u.station_id));
+      const uniqueStationIds = new Set(uploadedStationsData?.map(u => u.station_id) || []);
       const uploadedStations = uniqueStationIds.size;
       
       // Get voter statistics from the new table
@@ -47,7 +48,7 @@ const StatsCards = () => {
       let totalFemale = 0;
       let totalVotes = 0;
       
-      if (voterStats) {
+      if (voterStats && voterStats.length > 0) {
         totalMale = voterStats.reduce((sum, stat) => sum + stat.male_voters, 0);
         totalFemale = voterStats.reduce((sum, stat) => sum + stat.female_voters, 0);
         totalVotes = voterStats.reduce((sum, stat) => sum + stat.total_voters, 0);
@@ -62,6 +63,14 @@ const StatsCards = () => {
       });
       
       setLastUpdated(new Date());
+      
+      console.log("Stats fetched successfully:", {
+        totalStations,
+        uploadedStations,
+        totalMale,
+        totalFemale,
+        totalVotes
+      });
     } catch (error) {
       console.error("Error fetching stats:", error);
     } finally {

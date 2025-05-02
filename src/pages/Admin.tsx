@@ -86,8 +86,19 @@ const Admin = () => {
       
       if (error) throw error;
       
+      if (!uploadsData || uploadsData.length === 0) {
+        console.log("No uploads found");
+        setStationResults([]);
+        return;
+      }
+      
       const stationResultsData = await Promise.all(
         uploadsData.map(async (upload) => {
+          if (!upload.polling_stations) {
+            console.log(`Upload ${upload.id} has no associated polling station data`);
+            return null;
+          }
+          
           const { data: resultsData } = await supabase
             .from('results')
             .select(`
@@ -114,10 +125,16 @@ const Admin = () => {
         })
       );
       
-      setStationResults(stationResultsData);
-      console.log("Station results fetched:", stationResultsData);
+      // Filter out null entries and empty results
+      const validResults = stationResultsData
+        .filter(item => item !== null && item.station && item.station.name !== "Unknown")
+        .filter(item => item.results && item.results.length > 0);
+      
+      setStationResults(validResults);
+      console.log("Valid station results fetched:", validResults);
     } catch (error) {
       console.error("Error fetching station results:", error);
+      setStationResults([]);
     }
   };
 
@@ -203,7 +220,7 @@ const Admin = () => {
         {/* Statistics Cards */}
         <StatsCards />
         
-        {/* Charts - Using our new PieCharts component */}
+        {/* Charts - Using our PieCharts component */}
         <PieCharts />
         
         {/* Polling Station Results */}
