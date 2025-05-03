@@ -65,7 +65,7 @@ const Home = () => {
         .select('id, station_id');
       
       // For uploads with valid results, we need to check the results table
-      const validStationIds = new Set();
+      const validStationIds = new Set<string>();
       
       if (uploadsData && uploadsData.length > 0) {
         for (const upload of uploadsData) {
@@ -89,7 +89,8 @@ const Home = () => {
         const { data: stationsData } = await supabase
           .from('polling_stations')
           .select('district')
-          .in('id', Array.from(validStationIds));
+          // Fix: Convert Set to string array for the in method
+          .in('id', Array.from(validStationIds) as string[]);
         
         if (stationsData) {
           stationsData.forEach(station => {
