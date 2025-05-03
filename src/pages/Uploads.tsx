@@ -26,7 +26,7 @@ const Uploads = () => {
     const channel = supabase
       .channel('uploads-changes')
       .on('postgres_changes', { 
-        event: 'INSERT', 
+        event: '*', 
         schema: 'public', 
         table: 'uploads' 
       }, () => {

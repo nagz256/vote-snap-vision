@@ -75,7 +75,7 @@ const DataManagement = () => {
         const validTables = ["uploads", "results", "voter_statistics", "candidates"];
         if (validTables.includes(selectedTable)) {
           const { error } = await supabase
-            .from(selectedTable as any)
+            .from(selectedTable as "uploads" | "results" | "voter_statistics" | "candidates")
             .delete()
             .neq('id', '00000000-0000-0000-0000-000000000000');
             
