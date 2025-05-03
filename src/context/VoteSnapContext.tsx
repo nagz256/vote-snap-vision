@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -153,13 +152,9 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log("Resetting all data...");
       
-      // Delete all results first due to foreign key constraints
+      // In a mock environment, we'll simulate this
       await query('DELETE FROM results WHERE 1=1');
-      
-      // Delete all voter statistics
       await query('DELETE FROM voter_statistics WHERE 1=1');
-      
-      // Delete all uploads
       await query('DELETE FROM uploads WHERE 1=1');
       
       // Reset local state

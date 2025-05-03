@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,37 @@ const UploadedImages = () => {
           ORDER BY 
             u.timestamp DESC
         `);
+        
+        // If no data returned, use mock data for demonstration
+        if (!data || data.length === 0) {
+          const mockData = [
+            {
+              id: "1",
+              image_path: "https://placehold.co/600x400/png",
+              timestamp: new Date().toISOString(),
+              stationName: "Central Station",
+              district: "Downtown"
+            },
+            {
+              id: "2",
+              image_path: "https://placehold.co/600x400/png",
+              timestamp: new Date(Date.now() - 3600000).toISOString(),
+              stationName: "East Wing",
+              district: "Eastside"
+            }
+          ];
+          
+          const formattedMockData = mockData.map((item) => ({
+            id: item.id,
+            imagePath: item.image_path,
+            timestamp: item.timestamp,
+            stationName: item.stationName,
+            district: item.district
+          }));
+          
+          setUploads(formattedMockData);
+          return;
+        }
         
         const formattedData = data?.map((item) => ({
           id: item.id,

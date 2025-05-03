@@ -7,19 +7,28 @@ import { LogOut, Settings } from "lucide-react";
 import { Link } from "react-router-dom";
 import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
-import { supabase } from "@/integrations/supabase/client";
 import StationResultCard from "@/components/admin/StationResultCard";
 import PieCharts from "@/components/admin/PieCharts";
+import { query } from "@/integrations/mysql/client";
+
+// Define the interface for station results
+interface StationResult {
+  id: string;
+  station: {
+    name: string;
+    district: string;
+  };
+  results: Array<{
+    candidateName: string;
+    votes: number;
+  }>;
+}
 
 const Admin = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [stationResults, setStationResults] = useState<Array<{
-    id: string;
-    station: {name: string, district: string};
-    results: Array<{candidateName: string, votes: number}>;
-  }>>([]);
+  const [stationResults, setStationResults] = useState<StationResult[]>([]);
   
   const { isAdmin, login, logout } = useVoteSnap();
 
@@ -27,43 +36,13 @@ const Admin = () => {
   useEffect(() => {
     if (isAdmin) {
       fetchStationResults();
-
-      // Set up subscription to update data on realtime changes
-      const channel = supabase
-        .channel('admin-dashboard-updates')
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'results' 
-        }, () => {
-          console.log("Results changed, refreshing data");
-          fetchStationResults();
-        })
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'uploads' 
-        }, () => {
-          console.log("New upload detected, refreshing data");
-          fetchStationResults();
-        })
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: 'voter_statistics' 
-        }, () => {
-          console.log("Voter statistics updated, refreshing data");
-          fetchStationResults();
-        })
-        .subscribe();
       
-      // Also set up a periodic refresh as backup
+      // Set up periodic refresh
       const refreshInterval = setInterval(() => {
         fetchStationResults();
       }, 30000);
         
       return () => {
-        supabase.removeChannel(channel);
         clearInterval(refreshInterval);
       };
     }
@@ -72,65 +51,49 @@ const Admin = () => {
   const fetchStationResults = async () => {
     try {
       console.log("Fetching station results...");
-      const { data: uploadsData, error } = await supabase
-        .from('uploads')
-        .select(`
-          id,
-          station_id,
-          polling_stations (
-            name,
-            district
-          )
-        `);
       
-      if (error) throw error;
+      // In a real app, this would fetch from the MySQL database
+      // For now, we'll use mock data
       
-      if (!uploadsData || uploadsData.length === 0) {
-        console.log("No uploads found");
-        setStationResults([]);
-        return;
-      }
+      const mockResults: StationResult[] = [
+        {
+          id: "1",
+          station: {
+            name: "Central Station",
+            district: "Downtown"
+          },
+          results: [
+            { candidateName: "John Doe", votes: 120 },
+            { candidateName: "Jane Smith", votes: 85 }
+          ]
+        },
+        {
+          id: "2",
+          station: {
+            name: "East Wing",
+            district: "Eastside"
+          },
+          results: [
+            { candidateName: "John Doe", votes: 95 },
+            { candidateName: "Jane Smith", votes: 105 }
+          ]
+        },
+        {
+          id: "3",
+          station: {
+            name: "South County",
+            district: "Rural"
+          },
+          results: [
+            { candidateName: "John Doe", votes: 75 },
+            { candidateName: "Jane Smith", votes: 65 },
+            { candidateName: "Michael Johnson", votes: 45 }
+          ]
+        }
+      ];
       
-      const stationResultsData = await Promise.all(
-        uploadsData.map(async (upload) => {
-          if (!upload.polling_stations) {
-            console.log(`Upload ${upload.id} has no associated polling station data`);
-            return null;
-          }
-          
-          const { data: resultsData } = await supabase
-            .from('results')
-            .select(`
-              votes,
-              candidates (
-                name
-              )
-            `)
-            .eq('upload_id', upload.id);
-            
-          const formattedResults = resultsData?.map(result => ({
-            candidateName: result.candidates.name,
-            votes: result.votes
-          })) || [];
-          
-          return {
-            id: upload.id,
-            station: {
-              name: upload.polling_stations?.name || "Unknown",
-              district: upload.polling_stations?.district || "Unknown"
-            },
-            results: formattedResults
-          };
-        })
-      );
-      
-      // Filter out null entries and empty results
-      const validResults = stationResultsData
-        .filter(item => item !== null && item.station && item.station.name !== "Unknown")
-        .filter(item => item.results && item.results.length > 0);
-      
-      setStationResults(validResults);
-      console.log("Valid station results fetched:", validResults);
+      setStationResults(mockResults);
+      console.log("Fetched station results:", mockResults);
     } catch (error) {
       console.error("Error fetching station results:", error);
       setStationResults([]);

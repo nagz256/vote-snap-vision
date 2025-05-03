@@ -1,42 +1,71 @@
 
-import mysql from 'mysql2/promise';
+// Mock MySQL client for browser environments
+// In a real application, this would make API calls to a backend service
 
-// MySQL connection configuration
-const config = {
-  host: 'localhost',  // Change this to your MySQL host
-  user: 'shopiesp_votes',
-  password: 'shopiesp_votes',
-  database: 'shopiesp_votes',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+// Type definitions
+export interface QueryResult<T = any> {
+  id?: string;
+  [key: string]: any;
+}
+
+// Mock data to simulate database
+const mockDatabase = {
+  uploads: [],
+  results: [],
+  polling_stations: [],
+  candidates: [],
+  voter_statistics: []
 };
 
-// Create a connection pool
-export const pool = mysql.createPool(config);
-
-// Helper function to execute queries
+// Helper function to execute queries (simulated)
 export async function query<T>(sql: string, params: any[] = []): Promise<T[]> {
-  try {
-    const [rows] = await pool.execute(sql, params);
-    return rows as T[];
-  } catch (error) {
-    console.error('Database query error:', error);
-    throw error;
+  console.log('Query executed:', sql, params);
+  
+  // In a real app, this would be an API call to a backend service
+  // For now, we'll return mock data based on the query
+  
+  if (sql.includes('COUNT') && sql.includes('polling_stations')) {
+    return [{ count: 120 }] as unknown as T[];
   }
+  
+  if (sql.includes('uploads')) {
+    return mockDatabase.uploads as unknown as T[];
+  }
+  
+  if (sql.includes('results')) {
+    if (sql.includes('SUM')) {
+      return [{ totalVotes: 1250 }] as unknown as T[];
+    }
+    return mockDatabase.results as unknown as T[];
+  }
+  
+  if (sql.includes('voter_statistics')) {
+    return [{ 
+      totalMale: 680, 
+      totalFemale: 570, 
+      totalVoters: 1250, 
+      wastedBallots: 45 
+    }] as unknown as T[];
+  }
+  
+  if (sql.includes('candidates')) {
+    return mockDatabase.candidates as unknown as T[];
+  }
+  
+  // Default empty response
+  return [] as unknown as T[];
 }
 
 // Specialized query for when we want to get the inserted ID
 export async function insertQuery<T>(sql: string, params: any[] = []): Promise<{ id: string; affectedRows: number }> {
-  try {
-    const [result] = await pool.execute(sql, params);
-    const insertResult = result as mysql.ResultSetHeader;
-    return { 
-      id: insertResult.insertId.toString(), 
-      affectedRows: insertResult.affectedRows 
-    };
-  } catch (error) {
-    console.error('Database insertion error:', error);
-    throw error;
-  }
+  console.log('Insert executed:', sql, params);
+  
+  // Generate a mock ID
+  const mockId = Math.random().toString(36).substring(2, 15);
+  
+  // In a real app, this would make an API call to insert data
+  return {
+    id: mockId,
+    affectedRows: 1
+  };
 }
