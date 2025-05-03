@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { query } from "@/integrations/mysql/client";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, Download } from "lucide-react";
 
@@ -22,27 +21,27 @@ const UploadedImages = () => {
   useEffect(() => {
     const fetchUploads = async () => {
       try {
-        const { data, error } = await supabase
-          .from('uploads')
-          .select(`
-            id,
-            image_path,
-            timestamp,
-            polling_stations (
-              name,
-              district
-            )
-          `)
-          .order('timestamp', { ascending: false });
-          
-        if (error) throw error;
+        const data = await query(`
+          SELECT 
+            u.id,
+            u.image_path,
+            u.timestamp,
+            p.name as stationName,
+            p.district
+          FROM 
+            uploads u
+          JOIN 
+            polling_stations p ON u.station_id = p.id
+          ORDER BY 
+            u.timestamp DESC
+        `);
         
-        const formattedData = data?.map(item => ({
+        const formattedData = data?.map((item: any) => ({
           id: item.id,
           imagePath: item.image_path,
           timestamp: item.timestamp,
-          stationName: item.polling_stations?.name || "Unknown",
-          district: item.polling_stations?.district || "Unknown"
+          stationName: item.stationName || "Unknown",
+          district: item.district || "Unknown"
         })) || [];
         
         setUploads(formattedData);
@@ -53,20 +52,13 @@ const UploadedImages = () => {
     
     fetchUploads();
     
-    // Set up a subscription for real-time updates
-    const channel = supabase
-      .channel('table-db-changes')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'uploads' 
-      }, () => {
-        fetchUploads();
-      })
-      .subscribe();
-      
+    // Set up a periodic refresh
+    const refreshInterval = setInterval(() => {
+      fetchUploads();
+    }, 10000);
+    
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(refreshInterval);
     };
   }, []);
 

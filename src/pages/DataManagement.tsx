@@ -10,7 +10,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { pool, query } from "@/integrations/mysql/client";
 import { AlertCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -53,28 +53,16 @@ const DataManagement = () => {
         console.log("Deleting all data...");
         
         // Delete all results first due to foreign key constraints
-        await supabase
-          .from('results')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+        await query('DELETE FROM results WHERE 1=1');
         
         // Delete all voter statistics
-        await supabase
-          .from('voter_statistics')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+        await query('DELETE FROM voter_statistics WHERE 1=1');
         
         // Delete all uploads
-        await supabase
-          .from('uploads')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+        await query('DELETE FROM uploads WHERE 1=1');
           
         // Delete all candidates
-        await supabase
-          .from('candidates')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+        await query('DELETE FROM candidates WHERE 1=1');
           
         toast.success("All data has been successfully deleted");
       } else {
@@ -83,12 +71,7 @@ const DataManagement = () => {
         if (validTables.includes(selectedTable)) {
           console.log(`Deleting all ${selectedTable}...`);
           
-          const { error } = await supabase
-            .from(selectedTable as "uploads" | "results" | "voter_statistics" | "candidates")
-            .delete()
-            .neq('id', '00000000-0000-0000-0000-000000000000');
-            
-          if (error) throw error;
+          const result = await query(`DELETE FROM ${selectedTable} WHERE 1=1`);
           toast.success(`All ${selectedTable} have been successfully deleted`);
         } else {
           throw new Error("Invalid table selected");

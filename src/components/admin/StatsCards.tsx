@@ -1,7 +1,6 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { query } from "@/integrations/mysql/client";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -25,14 +24,11 @@ const StatsCards = () => {
       setIsRefreshing(true);
       
       // Get total number of polling stations
-      const { count: totalStations } = await supabase
-        .from('polling_stations')
-        .select('*', { count: 'exact', head: true });
+      const totalStationsResult = await query('SELECT COUNT(*) as count FROM polling_stations');
+      const totalStations = totalStationsResult[0]?.count || 0;
       
       // Get uploads with valid results
-      const { data: uploadsData } = await supabase
-        .from('uploads')
-        .select('id, station_id');
+      const uploadsData = await query('SELECT id, station_id FROM uploads');
       
       // For uploads with valid results, we need to check the results table
       const validStationIds = new Set<string>();
@@ -41,46 +37,36 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.station_id) continue;
           
-          const { count } = await supabase
-            .from('results')
-            .select('*', { count: 'exact', head: true })
-            .eq('upload_id', upload.id);
+          const resultsCount = await query(
+            'SELECT COUNT(*) as count FROM results WHERE upload_id = ?', 
+            [upload.id]
+          );
           
-          if (count && count > 0) {
+          if (resultsCount[0]?.count > 0) {
             validStationIds.add(upload.station_id);
           }
         }
       }
 
       // Get total votes from results
-      let totalVotesCounted = 0;
-      const { data: resultsData } = await supabase
-        .from('results')
-        .select('votes');
-
-      if (resultsData && resultsData.length > 0) {
-        totalVotesCounted = resultsData.reduce((sum, result) => sum + (result.votes || 0), 0);
-      }
+      const resultsData = await query('SELECT SUM(votes) as totalVotes FROM results');
+      const totalVotesCounted = resultsData[0]?.totalVotes || 0;
       
       // Get voter statistics from the table
-      const { data: voterStats } = await supabase
-        .from('voter_statistics')
-        .select('male_voters, female_voters, total_voters, wasted_ballots')
-        .in('station_id', Array.from(validStationIds).length > 0 ? Array.from(validStationIds) : ['00000000-0000-0000-0000-000000000000']);
-        
-      let totalMale = 0;
-      let totalFemale = 0;
-      let wastedBallots = 0;
+      const voterStats = validStationIds.size > 0 
+        ? await query(
+            'SELECT SUM(male_voters) as totalMale, SUM(female_voters) as totalFemale, SUM(total_voters) as totalVoters, SUM(wasted_ballots) as wastedBallots FROM voter_statistics WHERE station_id IN (?)', 
+            [Array.from(validStationIds)]
+          )
+        : [{ totalMale: 0, totalFemale: 0, totalVoters: 0, wastedBallots: 0 }];
       
-      if (voterStats && voterStats.length > 0) {
-        totalMale = voterStats.reduce((sum, stat) => sum + (stat.male_voters || 0), 0);
-        totalFemale = voterStats.reduce((sum, stat) => sum + (stat.female_voters || 0), 0);
-        wastedBallots = voterStats.reduce((sum, stat) => sum + (stat.wasted_ballots || 0), 0);
-      }
+      const totalMale = voterStats[0]?.totalMale || 0;
+      const totalFemale = voterStats[0]?.totalFemale || 0;
+      const wastedBallots = voterStats[0]?.wastedBallots || 0;
       
       setStats({
-        totalStations: totalStations || 0,
-        uploadedStations: validStationIds.size || 0,
+        totalStations,
+        uploadedStations: validStationIds.size,
         maleVoters: totalMale,
         femaleVoters: totalFemale,
         totalVoters: totalVotesCounted,
@@ -109,65 +95,12 @@ const StatsCards = () => {
   useEffect(() => {
     fetchStats();
     
-    // Set up a subscription to keep stats fresh with multiple channels
-    const uploadsChannel = supabase
-      .channel('stats-uploads-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'uploads' 
-      }, () => {
-        console.log("Uploads table updated, refreshing stats");
-        fetchStats();
-      })
-      .subscribe();
-      
-    const voterStatsChannel = supabase
-      .channel('stats-voter-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'voter_statistics' 
-      }, () => {
-        console.log("Voter statistics updated, refreshing stats");
-        fetchStats();
-      })
-      .subscribe();
-      
-    const resultsChannel = supabase
-      .channel('stats-results-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'results' 
-      }, () => {
-        console.log("Results updated, refreshing stats");
-        fetchStats();
-      })
-      .subscribe();
-      
-    const stationsChannel = supabase
-      .channel('stats-stations-changes')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'polling_stations' 
-      }, () => {
-        console.log("Polling stations table updated, refreshing stats");
-        fetchStats();
-      })
-      .subscribe();
-      
-    // Also set up a periodic refresh as backup (every 30 seconds)
+    // Set up a periodic refresh (every 30 seconds)
     const refreshInterval = setInterval(() => {
       fetchStats();
     }, 30000);
       
     return () => {
-      supabase.removeChannel(uploadsChannel);
-      supabase.removeChannel(voterStatsChannel);
-      supabase.removeChannel(resultsChannel);
-      supabase.removeChannel(stationsChannel);
       clearInterval(refreshInterval);
     };
   }, []);

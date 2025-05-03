@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { query } from "@/integrations/mysql/client";
 import { Link } from "react-router-dom";
 
 // Updated colors with better contrast for visibility
@@ -36,18 +36,12 @@ const PieCharts = () => {
       console.log("Fetching vote data for charts...");
       
       // Get all results with candidate info
-      const { data: resultsData, error } = await supabase
-        .from('results')
-        .select(`
-          votes,
-          candidates (
-            id,
-            name
-          )
-        `)
-        .gt('votes', 0); // Only get results with votes > 0
-      
-      if (error) throw error;
+      const resultsData = await query(`
+        SELECT r.votes, c.id, c.name
+        FROM results r
+        JOIN candidates c ON r.candidate_id = c.id
+        WHERE r.votes > 0
+      `);
       
       if (!resultsData || resultsData.length === 0) {
         console.log("No vote data found");
@@ -62,9 +56,9 @@ const PieCharts = () => {
       // Aggregate votes by candidate name
       const votesByCandidate: Record<string, number> = {};
       
-      resultsData.forEach(result => {
-        if (result.candidates && result.candidates.name && result.votes > 0) {
-          const candidateName = result.candidates.name;
+      resultsData.forEach((result: any) => {
+        if (result.name && result.votes > 0) {
+          const candidateName = result.name;
           votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
         }
       });
@@ -116,21 +110,13 @@ const PieCharts = () => {
   useEffect(() => {
     fetchData();
     
-    // Set up subscription for real-time updates
-    const channel = supabase
-      .channel('chart-updates')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'results' 
-      }, () => {
-        console.log("Results changed, refreshing charts");
-        fetchData();
-      })
-      .subscribe();
+    // Set up a periodic refresh (every 30 seconds)
+    const refreshInterval = setInterval(() => {
+      fetchData();
+    }, 30000);
     
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(refreshInterval);
     };
   }, []);
 
