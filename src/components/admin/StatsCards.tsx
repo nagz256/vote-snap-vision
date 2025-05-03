@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { query } from "@/integrations/mysql/client";
@@ -5,6 +6,26 @@ import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+
+interface CountResult {
+  count: number;
+}
+
+interface StationResult {
+  id: string;
+  station_id: string;
+}
+
+interface VoterStatsResult {
+  totalMale: number;
+  totalFemale: number;
+  totalVoters: number;
+  wastedBallots: number;
+}
+
+interface VotesResult {
+  totalVotes: number;
+}
 
 const StatsCards = () => {
   const [stats, setStats] = useState({
@@ -24,11 +45,11 @@ const StatsCards = () => {
       setIsRefreshing(true);
       
       // Get total number of polling stations
-      const totalStationsResult = await query('SELECT COUNT(*) as count FROM polling_stations');
+      const totalStationsResult = await query<CountResult>('SELECT COUNT(*) as count FROM polling_stations');
       const totalStations = totalStationsResult[0]?.count || 0;
       
       // Get uploads with valid results
-      const uploadsData = await query('SELECT id, station_id FROM uploads');
+      const uploadsData = await query<StationResult>('SELECT id, station_id FROM uploads');
       
       // For uploads with valid results, we need to check the results table
       const validStationIds = new Set<string>();
@@ -37,7 +58,7 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.station_id) continue;
           
-          const resultsCount = await query(
+          const resultsCount = await query<CountResult>(
             'SELECT COUNT(*) as count FROM results WHERE upload_id = ?', 
             [upload.id]
           );
@@ -49,12 +70,12 @@ const StatsCards = () => {
       }
 
       // Get total votes from results
-      const resultsData = await query('SELECT SUM(votes) as totalVotes FROM results');
+      const resultsData = await query<VotesResult>('SELECT SUM(votes) as totalVotes FROM results');
       const totalVotesCounted = resultsData[0]?.totalVotes || 0;
       
       // Get voter statistics from the table
       const voterStats = validStationIds.size > 0 
-        ? await query(
+        ? await query<VoterStatsResult>(
             'SELECT SUM(male_voters) as totalMale, SUM(female_voters) as totalFemale, SUM(total_voters) as totalVoters, SUM(wasted_ballots) as wastedBallots FROM voter_statistics WHERE station_id IN (?)', 
             [Array.from(validStationIds)]
           )

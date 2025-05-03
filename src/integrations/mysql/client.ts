@@ -40,4 +40,3 @@ export async function insertQuery<T>(sql: string, params: any[] = []): Promise<{
     throw error;
   }
 }
-

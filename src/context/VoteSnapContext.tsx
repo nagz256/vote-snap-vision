@@ -5,8 +5,6 @@ import { Upload, ExtractedResult } from "@/data/mockData";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 
-<lov-add-dependency>uuid@latest</lov-add-dependency>
-
 interface VoterStatistics {
   maleVoters: number;
   femaleVoters: number;
@@ -31,6 +29,21 @@ interface VoteSnapContextType {
   }>;
   getVotesByGender: () => Promise<{ male: number; female: number; total: number }>;
   resetData: () => Promise<void>;
+}
+
+interface CandidateResult {
+  id: string;
+}
+
+interface StationResult {
+  id: string;
+  station_id: string;
+}
+
+interface VoterStatsResult {
+  male_voters: number;
+  female_voters: number;
+  total_voters: number;
 }
 
 const VoteSnapContext = createContext<VoteSnapContextType | undefined>(undefined);
@@ -175,11 +188,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       console.log("Adding upload with data:", uploadData);
 
       // Insert the upload
-      const { id: uploadId } = await insertQuery(
+      const uploadResult = await insertQuery(
         'INSERT INTO uploads (id, station_id, image_path) VALUES (?, ?, ?)',
         [uuidv4(), uploadData.stationId, uploadData.imagePath]
       );
-
+      
+      const uploadId = uploadResult.id;
       console.log("Upload created with ID:", uploadId);
 
       // Add voter statistics if provided
@@ -202,12 +216,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         console.log("Processing result for candidate:", result.candidateName);
         
         // Check if candidate exists, if not create it
-        const candidateResults = await query('SELECT id FROM candidates WHERE name = ?', [result.candidateName]);
+        const candidateResults = await query<CandidateResult>('SELECT id FROM candidates WHERE name = ?', [result.candidateName]);
         
         let candidateId;
         if (candidateResults.length === 0) {
-          const { id } = await insertQuery('INSERT INTO candidates (id, name) VALUES (?, ?)', [uuidv4(), result.candidateName]);
-          candidateId = id;
+          const newCandidateId = uuidv4();
+          await query('INSERT INTO candidates (id, name) VALUES (?, ?)', [newCandidateId, result.candidateName]);
+          candidateId = newCandidateId;
         } else {
           candidateId = candidateResults[0].id;
         }
@@ -301,10 +316,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const getVotesByGender = async () => {
+  const getVotesByGender = async (): Promise<{ male: number; female: number; total: number }> => {
     try {
       // Get data directly from voter_statistics table
-      const voterStats = await query(`
+      const voterStats = await query<VoterStatsResult>(`
         SELECT male_voters, female_voters, total_voters
         FROM voter_statistics
       `);
@@ -315,7 +330,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       }
       
       // Sum up the values across all polling stations
-      const totals = voterStats.reduce((acc: any, stat: any) => {
+      const totals = voterStats.reduce((acc: { male: number; female: number; total: number }, stat) => {
         return {
           male: acc.male + (stat.male_voters || 0),
           female: acc.female + (stat.female_voters || 0),

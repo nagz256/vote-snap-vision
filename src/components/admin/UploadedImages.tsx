@@ -13,6 +13,14 @@ interface ImageItem {
   district: string;
 }
 
+interface ImageQueryResult {
+  id: string;
+  image_path: string;
+  timestamp: string;
+  stationName: string;
+  district: string;
+}
+
 const UploadedImages = () => {
   const [uploads, setUploads] = useState<ImageItem[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
@@ -21,7 +29,7 @@ const UploadedImages = () => {
   useEffect(() => {
     const fetchUploads = async () => {
       try {
-        const data = await query(`
+        const data = await query<ImageQueryResult>(`
           SELECT 
             u.id,
             u.image_path,
@@ -36,7 +44,7 @@ const UploadedImages = () => {
             u.timestamp DESC
         `);
         
-        const formattedData = data?.map((item: any) => ({
+        const formattedData = data?.map((item) => ({
           id: item.id,
           imagePath: item.image_path,
           timestamp: item.timestamp,
