@@ -10,7 +10,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { pool, query } from "@/integrations/mysql/client";
+import { query } from "@/integrations/mysql/client";
 import { AlertCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
