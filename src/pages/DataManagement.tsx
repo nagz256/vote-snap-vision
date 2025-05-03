@@ -63,22 +63,24 @@ const DataManagement = () => {
           .delete()
           .neq('id', '00000000-0000-0000-0000-000000000000');
           
+        // Delete all candidates
+        await supabase
+          .from('candidates')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+          
         toast.success("All data has been successfully deleted");
       } else {
-        // Delete specific table data - we need to use the actual table name, not the ID
-        // Fix: Using type assertion to specify that tableName is a valid table name
-        const tableName = selectedTable;
-        
         // Type checking to ensure we only use valid table names
-        if (tableName === "uploads" || tableName === "results" || 
-            tableName === "voter_statistics" || tableName === "candidates") {
+        const validTables = ["uploads", "results", "voter_statistics", "candidates"];
+        if (validTables.includes(selectedTable)) {
           const { error } = await supabase
-            .from(tableName)
+            .from(selectedTable as any)
             .delete()
             .neq('id', '00000000-0000-0000-0000-000000000000');
             
           if (error) throw error;
-          toast.success(`All ${tableName} have been successfully deleted`);
+          toast.success(`All ${selectedTable} have been successfully deleted`);
         } else {
           throw new Error("Invalid table selected");
         }
