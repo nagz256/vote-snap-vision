@@ -13,11 +13,20 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const DataManagement = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
 
   const tables = [
     { id: "all", name: "All Data" },
@@ -27,24 +36,22 @@ const DataManagement = () => {
     { id: "candidates", name: "Candidates" }
   ];
 
-  const handleReset = async () => {
+  const handleDeleteClick = () => {
     if (!selectedTable) {
       toast.error("Please select what data to delete");
       return;
     }
+    setShowDialog(true);
+  };
 
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      toast.warning("Click delete again to confirm. This cannot be undone!", {
-        duration: 5000
-      });
-      return;
-    }
-
+  const handleReset = async () => {
     try {
       setIsDeleting(true);
+      setShowDialog(false);
       
       if (selectedTable === "all") {
+        console.log("Deleting all data...");
+        
         // Delete all results first due to foreign key constraints
         await supabase
           .from('results')
@@ -74,6 +81,8 @@ const DataManagement = () => {
         // Type checking to ensure we only use valid table names
         const validTables = ["uploads", "results", "voter_statistics", "candidates"];
         if (validTables.includes(selectedTable)) {
+          console.log(`Deleting all ${selectedTable}...`);
+          
           const { error } = await supabase
             .from(selectedTable as "uploads" | "results" | "voter_statistics" | "candidates")
             .delete()
@@ -85,14 +94,12 @@ const DataManagement = () => {
           throw new Error("Invalid table selected");
         }
       }
-      
-      // Reset confirmation state
-      setConfirmDelete(false);
     } catch (error: any) {
       console.error("Error deleting data:", error);
       toast.error(`Failed to delete: ${error.message || "Unknown error"}`);
     } finally {
       setIsDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -145,16 +152,35 @@ const DataManagement = () => {
               
               <Button 
                 variant="destructive" 
-                onClick={handleReset}
+                onClick={handleDeleteClick}
                 disabled={isDeleting || !selectedTable}
                 className="w-full"
               >
-                {isDeleting ? "Deleting..." : confirmDelete ? "Confirm Delete" : "Delete Selected Data"}
+                {isDeleting ? "Deleting..." : "Delete Selected Data"}
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedTable === "all" ? "all data" : `all ${selectedTable}`}? 
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleReset}>
+              Yes, Delete Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
