@@ -21,12 +21,14 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useVoteSnap } from "@/context/VoteSnapContext";
 
 const DataManagement = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
+  const { refreshAvailableStations } = useVoteSnap();
 
   const tables = [
     { id: "all", name: "All Data" },
@@ -71,11 +73,21 @@ const DataManagement = () => {
         if (validTables.includes(selectedTable)) {
           console.log(`Deleting all ${selectedTable}...`);
           
-          const result = await query(`DELETE FROM ${selectedTable} WHERE 1=1`);
-          toast.success(`All ${selectedTable} have been successfully deleted`);
+          try {
+            const result = await query(`DELETE FROM ${selectedTable} WHERE 1=1`);
+            toast.success(`All ${selectedTable} have been successfully deleted`);
+          } catch (error) {
+            console.error(`Error deleting from ${selectedTable}:`, error);
+            toast.error(`Failed to delete ${selectedTable}: The table might have dependencies`);
+          }
         } else {
           throw new Error("Invalid table selected");
         }
+      }
+      
+      // Refresh available stations after data deletion
+      if (selectedTable === "all" || selectedTable === "uploads") {
+        await refreshAvailableStations();
       }
     } catch (error: any) {
       console.error("Error deleting data:", error);
