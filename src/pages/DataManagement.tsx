@@ -10,7 +10,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { query } from "@/integrations/mysql/client";
+import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -26,7 +26,6 @@ import { useVoteSnap } from "@/context/VoteSnapContext";
 const DataManagement = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const { refreshAvailableStations } = useVoteSnap();
 
@@ -55,16 +54,36 @@ const DataManagement = () => {
         console.log("Deleting all data...");
         
         // Delete all results first due to foreign key constraints
-        await query('DELETE FROM results WHERE 1=1');
+        const { error: resultsError } = await supabase
+          .from('results')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (resultsError) throw resultsError;
         
         // Delete all voter statistics
-        await query('DELETE FROM voter_statistics WHERE 1=1');
+        const { error: statsError } = await supabase
+          .from('voter_statistics')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (statsError) throw statsError;
         
         // Delete all uploads
-        await query('DELETE FROM uploads WHERE 1=1');
+        const { error: uploadsError } = await supabase
+          .from('uploads')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (uploadsError) throw uploadsError;
           
         // Delete all candidates
-        await query('DELETE FROM candidates WHERE 1=1');
+        const { error: candidatesError } = await supabase
+          .from('candidates')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (candidatesError) throw candidatesError;
           
         toast.success("All data has been successfully deleted");
       } else {
@@ -74,9 +93,15 @@ const DataManagement = () => {
           console.log(`Deleting all ${selectedTable}...`);
           
           try {
-            const result = await query(`DELETE FROM ${selectedTable} WHERE 1=1`);
+            const { error } = await supabase
+              .from(selectedTable)
+              .delete()
+              .neq('id', '00000000-0000-0000-0000-000000000000');
+              
+            if (error) throw error;
+            
             toast.success(`All ${selectedTable} have been successfully deleted`);
-          } catch (error) {
+          } catch (error: any) {
             console.error(`Error deleting from ${selectedTable}:`, error);
             toast.error(`Failed to delete ${selectedTable}: The table might have dependencies`);
           }
@@ -94,7 +119,6 @@ const DataManagement = () => {
       toast.error(`Failed to delete: ${error.message || "Unknown error"}`);
     } finally {
       setIsDeleting(false);
-      setConfirmDelete(false);
     }
   };
 
