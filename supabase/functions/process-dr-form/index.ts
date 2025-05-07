@@ -6,13 +6,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface OcrResult {
+  text: string;
+  confidence: number;
+}
+
+interface CandidateResult {
+  candidateName: string;
+  votes: number;
+}
+
+interface VoterStatistics {
+  maleVoters: number;
+  femaleVoters: number;
+  wastedBallots: number;
+  totalVoters: number;
+}
+
 /**
  * Simple text-based OCR result extraction since we can't use Tesseract in Deno
  * 
- * @param imageBlob - The image blob to process
+ * @param imageUrl - The image URL to process
  * @returns Object with extracted text and dummy confidence
  */
-async function simpleOcrProcessing(imageUrl) {
+async function simpleOcrProcessing(imageUrl: string): Promise<OcrResult> {
   console.log("Starting simple OCR processing...");
   
   // Since we can't use browser-based Tesseract.js in Deno environment,
@@ -30,9 +47,9 @@ async function simpleOcrProcessing(imageUrl) {
  * @param text - OCR extracted text
  * @returns Array of candidate name and vote count pairs
  */
-function extractCandidateResults(text) {
+function extractCandidateResults(text: string): CandidateResult[] {
   const lines = text.split('\n');
-  const results = [];
+  const results: CandidateResult[] = [];
   
   console.log("Extracting candidate results from text:", text);
   
@@ -104,7 +121,7 @@ function extractCandidateResults(text) {
     console.log("Few results found, trying column-based extraction");
     
     // Find lines with numbers, assume they might be vote counts
-    const potentialResults = [];
+    const potentialResults: CandidateResult[] = [];
     for (const line of lines) {
       // Skip lines with voter statistics terms
       if (line.toLowerCase().includes('male') || 
@@ -153,8 +170,8 @@ function extractCandidateResults(text) {
  * @param text - OCR extracted text
  * @returns Object containing voter statistics
  */
-function extractVoterStatistics(text) {
-  const voterStats = {
+function extractVoterStatistics(text: string): VoterStatistics {
+  const voterStats: VoterStatistics = {
     maleVoters: 0,
     femaleVoters: 0,
     wastedBallots: 0,
@@ -223,14 +240,26 @@ function extractVoterStatistics(text) {
   return voterStats;
 }
 
-serve(async (req) => {
+interface RequestBody {
+  imageUrl: string;
+}
+
+interface ResponseBody {
+  results: CandidateResult[];
+  voterStats: VoterStatistics;
+  success: boolean;
+  confidence?: number;
+  error?: string;
+}
+
+serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { imageUrl } = await req.json();
+    const { imageUrl } = await req.json() as RequestBody;
     
     if (!imageUrl) {
       throw new Error('Image URL is required');
@@ -260,37 +289,42 @@ serve(async (req) => {
       console.log("Final extracted results:", results);
       console.log("Extracted voter statistics:", voterStats);
       
-      return new Response(JSON.stringify({ 
-        results, 
-        voterStats, 
+      const responseBody: ResponseBody = {
+        results,
+        voterStats,
         success: true,
         confidence: ocrData.confidence
-      }), {
+      };
+      
+      return new Response(JSON.stringify(responseBody), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
       
     } catch (ocrError) {
       console.error("OCR processing error:", ocrError);
-      throw new Error(`OCR processing failed: ${ocrError.message}`);
+      throw new Error(`OCR processing failed: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`);
     }
     
   } catch (error) {
     console.error("Error in process-dr-form:", error);
+    
+    const errorResponse: ResponseBody = {
+      error: error instanceof Error ? error.message : String(error),
+      success: false,
+      results: [
+        { candidateName: "Sample Candidate A", votes: 0 }, 
+        { candidateName: "Sample Candidate B", votes: 0 }
+      ],
+      voterStats: {
+        maleVoters: 0,
+        femaleVoters: 0,
+        wastedBallots: 0,
+        totalVoters: 0
+      }
+    };
+    
     return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        success: false,
-        results: [
-          { candidateName: "Sample Candidate A", votes: 0 }, 
-          { candidateName: "Sample Candidate B", votes: 0 }
-        ],
-        voterStats: {
-          maleVoters: 0,
-          femaleVoters: 0,
-          wastedBallots: 0,
-          totalVoters: 0
-        }
-      }),
+      JSON.stringify(errorResponse),
       { 
         status: 200, // Return 200 even with error to handle it gracefully in the UI
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
