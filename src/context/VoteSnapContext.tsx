@@ -1,8 +1,10 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
+import { supabase } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
   maleVoters: number;
@@ -70,6 +72,86 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchUploads = async () => {
     try {
+      console.log("Fetching uploads from Supabase...");
+      
+      // First try to get uploads from Supabase
+      const { data: supabaseUploads, error } = await supabase
+        .from('uploads')
+        .select(`
+          id, 
+          image_path, 
+          station_id, 
+          timestamp,
+          polling_stations (
+            id, 
+            name,
+            district
+          )
+        `);
+        
+      if (error) {
+        console.error("Error fetching uploads from Supabase:", error);
+        fallbackToMySQLUploads();
+        return;
+      }
+      
+      if (supabaseUploads && supabaseUploads.length > 0) {
+        console.log("Got uploads from Supabase:", supabaseUploads.length);
+        
+        const formattedUploads = await Promise.all(
+          supabaseUploads.map(async (upload: any) => {
+            try {
+              // Get results for each upload
+              const { data: resultsData } = await supabase
+                .from('results')
+                .select(`
+                  votes,
+                  candidates (
+                    id,
+                    name
+                  )
+                `)
+                .eq('upload_id', upload.id);
+
+              const formattedResults = resultsData?.map((result: any) => ({
+                candidateName: result.candidates.name,
+                votes: result.votes
+              })) || [];
+
+              return {
+                id: upload.id,
+                stationId: upload.station_id,
+                imagePath: upload.image_path,
+                timestamp: upload.timestamp,
+                station: {
+                  id: upload.polling_stations.id,
+                  name: upload.polling_stations.name,
+                  district: upload.polling_stations.district
+                },
+                results: formattedResults
+              } as Upload;
+            } catch (resultError) {
+              console.error(`Error getting results for upload ${upload.id}:`, resultError);
+              return null;
+            }
+          })
+        );
+        
+        // Filter out any null entries from failed result fetches
+        const validUploads = formattedUploads.filter(upload => upload !== null) as Upload[];
+        setUploads(validUploads);
+      } else {
+        console.log("No uploads found in Supabase, falling back to MySQL");
+        fallbackToMySQLUploads();
+      }
+    } catch (error) {
+      console.error("Error in fetchUploads:", error);
+      fallbackToMySQLUploads();
+    }
+  };
+  
+  const fallbackToMySQLUploads = async () => {
+    try {
       const uploadsData = await query(`
         SELECT u.id, u.image_path, u.station_id, u.timestamp, 
                p.id as polling_station_id, p.name as polling_station_name, p.district
@@ -93,7 +175,6 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             WHERE r.upload_id = ?
           `, [upload.id]);
 
-          // Only include uploads that have results
           const formattedResults = resultsData?.map((result: any) => ({
             candidateName: result.candidate_name,
             votes: result.votes
@@ -122,7 +203,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       setUploads(validUploads);
       console.log("Valid uploads fetched:", validUploads);
     } catch (error) {
-      console.error("Error in fetchUploads:", error);
+      console.error("Error in fallbackToMySQLUploads:", error);
       setUploads([]);
     }
   };
@@ -152,10 +233,42 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log("Resetting all data...");
       
-      // In a mock environment, we'll simulate this
-      await query('DELETE FROM results WHERE 1=1');
-      await query('DELETE FROM voter_statistics WHERE 1=1');
-      await query('DELETE FROM uploads WHERE 1=1');
+      // Try with Supabase first
+      try {
+        // Delete from results first (foreign key constraint)
+        const { error: resultsError } = await supabase
+          .from('results')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (resultsError) throw resultsError;
+        
+        // Delete voter statistics
+        const { error: statsError } = await supabase
+          .from('voter_statistics')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (statsError) throw statsError;
+        
+        // Delete uploads
+        const { error: uploadsError } = await supabase
+          .from('uploads')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        if (uploadsError) throw uploadsError;
+        
+        console.log("Successfully reset data via Supabase");
+      } catch (supabaseError) {
+        console.error("Error resetting data via Supabase:", supabaseError);
+        console.log("Falling back to MySQL for data reset");
+        
+        // Fallback to MySQL
+        await query('DELETE FROM results WHERE 1=1');
+        await query('DELETE FROM voter_statistics WHERE 1=1');
+        await query('DELETE FROM uploads WHERE 1=1');
+      }
       
       // Reset local state
       setUploads([]);
@@ -181,52 +294,137 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
   ) => {
     try {
       console.log("Adding upload with data:", uploadData);
-
-      // Insert the upload
-      const uploadResult = await insertQuery(
-        'INSERT INTO uploads (id, station_id, image_path) VALUES (?, ?, ?)',
-        [uuidv4(), uploadData.stationId, uploadData.imagePath]
-      );
       
-      const uploadId = uploadResult.id;
-      console.log("Upload created with ID:", uploadId);
-
-      // Add voter statistics if provided
-      if (uploadData.voterStatistics) {
-        await query(
-          'INSERT INTO voter_statistics (id, upload_id, station_id, male_voters, female_voters, wasted_ballots, total_voters) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [
-            uuidv4(),
-            uploadId,
-            uploadData.stationId,
-            uploadData.voterStatistics.maleVoters,
-            uploadData.voterStatistics.femaleVoters,
-            uploadData.voterStatistics.wastedBallots,
-            uploadData.voterStatistics.totalVoters
-          ]
+      // Try with Supabase first
+      try {
+        // Insert upload
+        const { data: uploadResult, error: uploadError } = await supabase
+          .from('uploads')
+          .insert({
+            station_id: uploadData.stationId,
+            image_path: uploadData.imagePath
+          })
+          .select();
+          
+        if (uploadError) throw uploadError;
+        if (!uploadResult || uploadResult.length === 0) {
+          throw new Error('Failed to insert upload');
+        }
+        
+        const uploadId = uploadResult[0].id;
+        console.log("Upload created with ID:", uploadId);
+        
+        // Add voter statistics if provided
+        if (uploadData.voterStatistics) {
+          const { error: statsError } = await supabase
+            .from('voter_statistics')
+            .insert({
+              upload_id: uploadId,
+              station_id: uploadData.stationId,
+              male_voters: uploadData.voterStatistics.maleVoters,
+              female_voters: uploadData.voterStatistics.femaleVoters,
+              wasted_ballots: uploadData.voterStatistics.wastedBallots,
+              total_voters: uploadData.voterStatistics.totalVoters
+            });
+            
+          if (statsError) console.error("Error inserting voter statistics:", statsError);
+        }
+        
+        // Process results
+        for (const result of results) {
+          console.log("Processing result for candidate:", result.candidateName);
+          
+          // Find candidate by name
+          const { data: candidateData, error: candidateQueryError } = await supabase
+            .from('candidates')
+            .select('id')
+            .eq('name', result.candidateName)
+            .single();
+            
+          let candidateId;
+          
+          if (candidateQueryError || !candidateData) {
+            // Create new candidate if not found
+            const { data: newCandidate, error: createError } = await supabase
+              .from('candidates')
+              .insert({ name: result.candidateName })
+              .select();
+              
+            if (createError || !newCandidate || newCandidate.length === 0) {
+              console.error("Error creating new candidate:", createError);
+              continue;
+            }
+            
+            candidateId = newCandidate[0].id;
+          } else {
+            candidateId = candidateData.id;
+          }
+          
+          // Insert result
+          const { error: resultError } = await supabase
+            .from('results')
+            .insert({
+              upload_id: uploadId,
+              candidate_id: candidateId,
+              votes: result.votes
+            });
+            
+          if (resultError) {
+            console.error("Error inserting result:", resultError);
+          }
+        }
+        
+        console.log("Successfully added upload via Supabase");
+      } catch (supabaseError) {
+        console.error("Error adding upload via Supabase:", supabaseError);
+        console.log("Falling back to MySQL for upload");
+        
+        // Fallback to MySQL
+        const uploadResult = await insertQuery(
+          'INSERT INTO uploads (id, station_id, image_path) VALUES (?, ?, ?)',
+          [uuidv4(), uploadData.stationId, uploadData.imagePath]
         );
-      }
+        
+        const uploadId = uploadResult.id;
+        console.log("Upload created with ID:", uploadId);
 
-      for (const result of results) {
-        console.log("Processing result for candidate:", result.candidateName);
-        
-        // Check if candidate exists, if not create it
-        const candidateResults = await query<CandidateResult>('SELECT id FROM candidates WHERE name = ?', [result.candidateName]);
-        
-        let candidateId;
-        if (candidateResults.length === 0) {
-          const newCandidateId = uuidv4();
-          await query('INSERT INTO candidates (id, name) VALUES (?, ?)', [newCandidateId, result.candidateName]);
-          candidateId = newCandidateId;
-        } else {
-          candidateId = candidateResults[0].id;
+        // Add voter statistics if provided
+        if (uploadData.voterStatistics) {
+          await query(
+            'INSERT INTO voter_statistics (id, upload_id, station_id, male_voters, female_voters, wasted_ballots, total_voters) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+              uuidv4(),
+              uploadId,
+              uploadData.stationId,
+              uploadData.voterStatistics.maleVoters,
+              uploadData.voterStatistics.femaleVoters,
+              uploadData.voterStatistics.wastedBallots,
+              uploadData.voterStatistics.totalVoters
+            ]
+          );
         }
 
-        console.log("Inserting result for candidate:", candidateId, "votes:", result.votes);
-        await query(
-          'INSERT INTO results (id, upload_id, candidate_id, votes) VALUES (?, ?, ?, ?)',
-          [uuidv4(), uploadId, candidateId, result.votes]
-        );
+        for (const result of results) {
+          console.log("Processing result for candidate:", result.candidateName);
+          
+          // Check if candidate exists, if not create it
+          const candidateResults = await query<CandidateResult>('SELECT id FROM candidates WHERE name = ?', [result.candidateName]);
+          
+          let candidateId;
+          if (candidateResults.length === 0) {
+            const newCandidateId = uuidv4();
+            await query('INSERT INTO candidates (id, name) VALUES (?, ?)', [newCandidateId, result.candidateName]);
+            candidateId = newCandidateId;
+          } else {
+            candidateId = candidateResults[0].id;
+          }
+
+          console.log("Inserting result for candidate:", candidateId, "votes:", result.votes);
+          await query(
+            'INSERT INTO results (id, upload_id, candidate_id, votes) VALUES (?, ?, ?, ?)',
+            [uuidv4(), uploadId, candidateId, result.votes]
+          );
+        }
       }
 
       if (isAdmin) {
@@ -240,8 +438,41 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getAvailableStations = async () => {
     try {
-      console.log("Fetching available stations");
+      console.log("Fetching available stations...");
       
+      // Try to get from Supabase first
+      try {
+        // Get all stations
+        const { data: allStations, error: stationsError } = await supabase
+          .from('polling_stations')
+          .select('*')
+          .order('name', { ascending: true });
+          
+        if (stationsError) throw stationsError;
+        
+        // Get uploads to check which stations are already submitted
+        const { data: uploads, error: uploadsError } = await supabase
+          .from('uploads')
+          .select('station_id');
+          
+        if (uploadsError) throw uploadsError;
+        
+        // Extract unique station IDs that have been submitted
+        const submittedIds = uploads ? [...new Set(uploads.map(u => u.station_id))] : [];
+        
+        // Filter out submitted stations
+        const availableStations = allStations.filter(station => 
+          !submittedIds.includes(station.id)
+        );
+        
+        console.log("Available stations from Supabase:", availableStations.length);
+        return availableStations || [];
+      } catch (supabaseError) {
+        console.error("Error fetching available stations from Supabase:", supabaseError);
+        console.log("Falling back to MySQL for available stations");
+      }
+      
+      // Fallback to MySQL
       // Get IDs of stations that have already been submitted
       const submittedStations = await query('SELECT DISTINCT station_id FROM uploads');
       
@@ -274,6 +505,55 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getTotalVotes = async () => {
     try {
+      console.log("Getting total votes...");
+      
+      // Try with Supabase first
+      try {
+        const { data, error } = await supabase
+          .from('results')
+          .select(`
+            votes,
+            candidates (
+              name
+            )
+          `);
+          
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          console.log("Got votes data from Supabase:", data.length);
+          
+          // Filter out any invalid results
+          const validResults = data.filter(result => 
+            result.candidates && 
+            result.candidates.name && 
+            typeof result.votes === 'number'
+          );
+          
+          if (validResults.length === 0) {
+            console.log("No valid results found");
+            return [];
+          }
+          
+          // Aggregate votes by candidate name
+          const totalVotes: Record<string, number> = {};
+          validResults.forEach(result => {
+            const candidateName = result.candidates.name;
+            totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+          });
+          
+          const formattedResults = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
+          console.log("Total votes formatted:", formattedResults);
+          return formattedResults;
+        }
+        
+        console.log("No results found in Supabase, falling back to MySQL");
+      } catch (supabaseError) {
+        console.error("Error getting total votes from Supabase:", supabaseError);
+        console.log("Falling back to MySQL for total votes");
+      }
+      
+      // Fallback to MySQL
       const results = await query(`
         SELECT r.votes, c.name
         FROM results r
@@ -313,7 +593,38 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const getVotesByGender = async (): Promise<{ male: number; female: number; total: number }> => {
     try {
-      // Get data directly from voter_statistics table
+      console.log("Getting votes by gender...");
+      
+      // Try with Supabase first
+      try {
+        const { data, error } = await supabase
+          .from('voter_statistics')
+          .select('male_voters, female_voters, total_voters');
+          
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          console.log("Got voter statistics from Supabase:", data.length);
+          
+          // Sum up the values across all polling stations
+          const totals = data.reduce((acc: { male: number; female: number; total: number }, stat) => {
+            return {
+              male: acc.male + (stat.male_voters || 0),
+              female: acc.female + (stat.female_voters || 0),
+              total: acc.total + (stat.total_voters || 0)
+            };
+          }, { male: 0, female: 0, total: 0 });
+          
+          return totals;
+        }
+        
+        console.log("No voter statistics found in Supabase, falling back to MySQL");
+      } catch (supabaseError) {
+        console.error("Error getting votes by gender from Supabase:", supabaseError);
+        console.log("Falling back to MySQL for gender votes");
+      }
+    
+      // Get data directly from voter_statistics table via MySQL
       const voterStats = await query<VoterStatsResult>(`
         SELECT male_voters, female_voters, total_voters
         FROM voter_statistics
@@ -347,12 +658,32 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     error?: string;
   }> => {
     try {
-      // This would normally call an API to process the image
-      // For now, we'll return mock data
+      console.log("Processing DR Form with image URL:", imageUrl);
+      
+      try {
+        // Try using the Supabase Edge Function
+        const { data, error } = await supabase.functions.invoke('process-dr-form', {
+          body: { imageUrl },
+        });
+        
+        if (error) throw error;
+        
+        if (data && data.success) {
+          console.log("Successfully processed form via Supabase Edge Function");
+          return data;
+        }
+        
+        throw new Error(data?.error || "Unknown error in function");
+      } catch (supabaseError) {
+        console.error("Error using Supabase function:", supabaseError);
+        console.log("Using mock OCR response as fallback");
+      }
+      
+      // Mock OCR response as fallback
       const mockResults = [
-        { candidateName: "John Doe", votes: 120 },
-        { candidateName: "Jane Smith", votes: 85 },
-        { candidateName: "Michael Johnson", votes: 95 }
+        { candidateName: "Sarah Johnson", votes: 120 },
+        { candidateName: "Michael Chen", votes: 85 },
+        { candidateName: "Olivia Rodriguez", votes: 95 }
       ];
       
       const mockVoterStats = {

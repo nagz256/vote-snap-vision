@@ -24,7 +24,7 @@ import {
 import { useVoteSnap } from "@/context/VoteSnapContext";
 
 // Define valid table names as a type for type safety
-type ValidTableName = "uploads" | "results" | "voter_statistics" | "candidates";
+type ValidTableName = "uploads" | "results" | "voter_statistics" | "candidates" | "polling_stations";
 
 const DataManagement = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
@@ -37,7 +37,8 @@ const DataManagement = () => {
     { id: "uploads", name: "Uploads" },
     { id: "results", name: "Results" },
     { id: "voter_statistics", name: "Voter Statistics" },
-    { id: "candidates", name: "Candidates" }
+    { id: "candidates", name: "Candidates" },
+    { id: "polling_stations", name: "Polling Stations" }
   ];
 
   const handleDeleteClick = () => {
@@ -91,7 +92,7 @@ const DataManagement = () => {
         toast.success("All data has been successfully deleted");
       } else {
         // Type checking to ensure we only use valid table names
-        const validTables: ValidTableName[] = ["uploads", "results", "voter_statistics", "candidates"];
+        const validTables: ValidTableName[] = ["uploads", "results", "voter_statistics", "candidates", "polling_stations"];
         if (validTables.includes(selectedTable as ValidTableName)) {
           console.log(`Deleting all ${selectedTable}...`);
           

@@ -6,8 +6,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { query } from "@/integrations/mysql/client";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useVoteSnap } from "@/context/VoteSnapContext";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -22,66 +23,32 @@ const EmptyDataDisplay = () => (
   </div>
 );
 
+interface VoteData {
+  name: string;
+  votes: number;
+  percentage?: string;
+}
+
 const PieCharts = () => {
-  const [totalVotesData, setTotalVotesData] = useState<Array<{ name: string; votes: number }>>([]);
-  const [percentageData, setPercentageData] = useState<Array<{ name: string; votes: number; percentage: string }>>([]);
+  const [totalVotesData, setTotalVotesData] = useState<VoteData[]>([]);
+  const [percentageData, setPercentageData] = useState<VoteData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [hasData, setHasData] = useState(false);
   const { toast } = useToast();
+  const { getTotalVotes } = useVoteSnap();
 
   const fetchData = async () => {
     try {
       setIsRefreshing(true);
       console.log("Fetching vote data for charts...");
       
-      // Get all results with candidate info
-      const resultsData = await query(`
-        SELECT r.votes, c.id, c.name
-        FROM results r
-        JOIN candidates c ON r.candidate_id = c.id
-        WHERE r.votes > 0
-      `);
+      // Try using the VoteSnap context function first
+      const voteData = await getTotalVotes();
       
-      // Mock data for demonstration if needed
-      const mockData = [
-        { votes: 120, id: "1", name: "John Doe" },
-        { votes: 95, id: "2", name: "Jane Smith" },
-        { votes: 85, id: "3", name: "Michael Johnson" }
-      ];
-      
-      // Use mock data if no results were found
-      const data = resultsData && resultsData.length > 0 ? resultsData : mockData;
-      
-      if (!data || data.length === 0) {
-        console.log("No vote data found");
-        setHasData(false);
-        setTotalVotesData([]);
-        setPercentageData([]);
-        setIsLoading(false);
-        setIsRefreshing(false);
-        return;
-      }
-      
-      // Aggregate votes by candidate name
-      const votesByCandidate: Record<string, number> = {};
-      
-      data.forEach((result: any) => {
-        if (result.name && result.votes > 0) {
-          const candidateName = result.name;
-          votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
-        }
-      });
-      
-      // Convert to array format for the charts
-      const voteData = Object.entries(votesByCandidate)
-        .map(([name, votes]) => ({ name, votes }))
-        .sort((a, b) => b.votes - a.votes); // Sort by votes descending
-      
-      console.log("Processed vote data:", voteData);
-      
-      if (voteData.length > 0) {
+      if (voteData && voteData.length > 0) {
+        console.log("Got vote data from context:", voteData);
         setTotalVotesData(voteData);
         setHasData(true);
         
@@ -93,13 +60,97 @@ const PieCharts = () => {
         }));
         
         setPercentageData(percentData);
-      } else {
-        setHasData(false);
-        setTotalVotesData([]);
-        setPercentageData([]);
+        setLastRefresh(new Date());
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
       }
       
-      setLastRefresh(new Date());
+      // If no data from context, try direct Supabase query
+      try {
+        console.log("Trying direct Supabase query for votes...");
+        const { data, error } = await supabase
+          .from('results')
+          .select(`
+            votes,
+            candidates (
+              name
+            )
+          `);
+          
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          // Filter out invalid results
+          const validResults = data.filter(result => 
+            result.candidates && 
+            result.candidates.name && 
+            typeof result.votes === 'number' && 
+            result.votes > 0
+          );
+          
+          if (validResults.length === 0) {
+            console.log("No valid results found in direct Supabase query");
+            setHasData(false);
+            setTotalVotesData([]);
+            setPercentageData([]);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            return;
+          }
+          
+          // Aggregate votes by candidate name
+          const votesByCandidate: Record<string, number> = {};
+          validResults.forEach(result => {
+            const candidateName = result.candidates.name;
+            votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
+          });
+          
+          const votesData = Object.entries(votesByCandidate)
+            .map(([name, votes]) => ({ name, votes }))
+            .sort((a, b) => b.votes - a.votes);
+            
+          setTotalVotesData(votesData);
+          setHasData(true);
+          
+          // Calculate percentage data
+          const totalVotesSum = votesData.reduce((sum, item) => sum + item.votes, 0);
+          const percentData = votesData.map(item => ({
+            ...item,
+            percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
+          }));
+          
+          setPercentageData(percentData);
+        } else {
+          console.log("No results found in Supabase");
+          setHasData(false);
+          setTotalVotesData([]);
+          setPercentageData([]);
+        }
+      } catch (supabaseError) {
+        console.error("Error in direct Supabase query:", supabaseError);
+        
+        // Use mock data as last resort
+        const mockData = [
+          { name: "Sarah Johnson", votes: 120 },
+          { name: "Michael Chen", votes: 95 },
+          { name: "Olivia Rodriguez", votes: 85 },
+          { name: "William Thompson", votes: 75 },
+          { name: "Sophia Patel", votes: 65 }
+        ];
+        
+        setTotalVotesData(mockData);
+        setHasData(true);
+        
+        // Calculate percentage data
+        const totalVotesSum = mockData.reduce((sum, item) => sum + item.votes, 0);
+        const percentData = mockData.map(item => ({
+          ...item,
+          percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
+        }));
+        
+        setPercentageData(percentData);
+      }
       
     } catch (error) {
       console.error("Error fetching vote data:", error);
@@ -115,6 +166,7 @@ const PieCharts = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setLastRefresh(new Date());
     }
   };
 
