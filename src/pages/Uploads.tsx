@@ -2,9 +2,10 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { query } from "@/integrations/mysql/client";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, Download } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface ImageUpload {
   id: string;
@@ -14,18 +15,11 @@ interface ImageUpload {
   district: string;
 }
 
-interface UploadQueryResult {
-  id: string;
-  image_path: string;
-  timestamp: string;
-  stationName: string;
-  district: string;
-}
-
 const Uploads = () => {
   const [uploads, setUploads] = useState<ImageUpload[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageUpload | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchUploads();
@@ -42,47 +36,32 @@ const Uploads = () => {
 
   const fetchUploads = async () => {
     try {
-      const data = await query<UploadQueryResult>(`
-        SELECT 
-          u.id,
-          u.image_path,
-          u.timestamp,
-          p.name as stationName,
-          p.district
-        FROM 
-          uploads u
-        JOIN 
-          polling_stations p ON u.station_id = p.id
-        ORDER BY 
-          u.timestamp DESC
-      `);
+      setIsLoading(true);
       
-      // If no data, use mock data for demonstration
-      if (!data || data.length === 0) {
-        const mockData = [
-          {
-            id: "1",
-            image_path: "https://placehold.co/600x400/png",
-            timestamp: new Date().toISOString(),
-            stationName: "Central Station",
-            district: "Downtown"
-          },
-          {
-            id: "2", 
-            image_path: "https://placehold.co/600x400/png",
-            timestamp: new Date(Date.now() - 3600000).toISOString(),
-            stationName: "East Wing",
-            district: "Eastside"
-          }
-        ];
+      const { data, error } = await supabase
+        .from('uploads')
+        .select(`
+          id,
+          image_path,
+          timestamp,
+          polling_stations (
+            name,
+            district
+          )
+        `)
+        .order('timestamp', { ascending: false });
         
-        setUploads(mockData.map(item => ({
-          id: item.id,
-          imagePath: item.image_path,
-          timestamp: item.timestamp,
-          stationName: item.stationName,
-          district: item.district
-        })));
+      if (error) {
+        console.error("Error fetching uploads:", error);
+        toast.error("Failed to load uploads");
+        setIsLoading(false);
+        return;
+      }
+      
+      if (!data || data.length === 0) {
+        console.log("No uploads found in database");
+        setUploads([]);
+        setIsLoading(false);
         return;
       }
       
@@ -90,13 +69,17 @@ const Uploads = () => {
         id: item.id,
         imagePath: item.image_path,
         timestamp: item.timestamp,
-        stationName: item.stationName || "Unknown Station",
-        district: item.district || "Unknown District"
+        stationName: item.polling_stations?.name || "Unknown Station",
+        district: item.polling_stations?.district || "Unknown District"
       }));
       
       setUploads(formattedData);
+      console.log("Fetched uploads:", formattedData);
     } catch (error) {
-      console.error("Error fetching uploads:", error);
+      console.error("Error in fetchUploads:", error);
+      toast.error("Failed to load uploads");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -111,59 +94,63 @@ const Uploads = () => {
           <CardTitle>All Uploaded Forms</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {uploads.map((upload) => (
-              <div key={upload.id} className="bg-white/40 rounded-lg overflow-hidden">
-                <div className="relative h-48">
-                  <img 
-                    src={upload.imagePath} 
-                    alt={`Form from ${upload.stationName}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
-                    <h3 className="font-medium">{upload.stationName}</h3>
-                    <p className="text-sm opacity-90">{upload.district}</p>
-                  </div>
-                </div>
-                <div className="p-3 flex justify-between items-center">
-                  <p className="text-xs text-muted-foreground">
-                    {formatDistanceToNow(parseISO(upload.timestamp), { addSuffix: true })}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="flex items-center gap-1"
-                      onClick={() => {
-                        setSelectedImage(upload);
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      <Eye size={14} />
-                      View
-                    </Button>
-                    <a 
-                      href={upload.imagePath}
-                      download
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="ghost" size="sm" className="flex items-center gap-1">
-                        <Download size={14} />
-                        Download
-                      </Button>
-                    </a>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {uploads.length === 0 && (
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin h-8 w-8 border-4 border-purple-500 rounded-full border-t-transparent"></div>
+            </div>
+          ) : uploads.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">
               No forms have been uploaded yet
             </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {uploads.map((upload) => (
+                <div key={upload.id} className="bg-white/40 rounded-lg overflow-hidden">
+                  <div className="relative h-48">
+                    <img 
+                      src={upload.imagePath} 
+                      alt={`Form from ${upload.stationName}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
+                      <h3 className="font-medium">{upload.stationName}</h3>
+                      <p className="text-sm opacity-90">{upload.district}</p>
+                    </div>
+                  </div>
+                  <div className="p-3 flex justify-between items-center">
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(parseISO(upload.timestamp), { addSuffix: true })}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="flex items-center gap-1"
+                        onClick={() => {
+                          setSelectedImage(upload);
+                          setIsModalOpen(true);
+                        }}
+                      >
+                        <Eye size={14} />
+                        View
+                      </Button>
+                      <a 
+                        href={upload.imagePath}
+                        download
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                          <Download size={14} />
+                          Download
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

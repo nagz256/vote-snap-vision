@@ -1,31 +1,11 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import { query } from "@/integrations/mysql/client";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-
-interface CountResult {
-  count: number;
-}
-
-interface StationResult {
-  id: string;
-  station_id: string;
-}
-
-interface VoterStatsResult {
-  totalMale: number;
-  totalFemale: number;
-  totalVoters: number;
-  wastedBallots: number;
-}
-
-interface VotesResult {
-  totalVotes: number;
-}
+import { supabase } from "@/integrations/supabase/client";
 
 const StatsCards = () => {
   const [stats, setStats] = useState({
@@ -45,54 +25,94 @@ const StatsCards = () => {
       setIsRefreshing(true);
       
       // Get total number of polling stations
-      const totalStationsResult = await query<CountResult>('SELECT COUNT(*) as count FROM polling_stations');
-      const totalStations = totalStationsResult[0]?.count || 0;
+      const { data: stationsData, error: stationsError } = await supabase
+        .from('polling_stations')
+        .select('id');
+        
+      if (stationsError) {
+        console.error("Error fetching stations:", stationsError);
+        throw stationsError;
+      }
       
-      // Get uploads with valid results
-      const uploadsData = await query<StationResult>('SELECT id, station_id FROM uploads');
+      const totalStations = stationsData ? stationsData.length : 0;
       
-      // For uploads with valid results, we need to check the results table
+      // Get uploads to determine submitted stations
+      const { data: uploadsData, error: uploadsError } = await supabase
+        .from('uploads')
+        .select('id, station_id');
+        
+      if (uploadsError) {
+        console.error("Error fetching uploads:", uploadsError);
+        throw uploadsError;
+      }
+      
+      // For uploads with valid results, check the results table
       const validStationIds = new Set<string>();
       
       if (uploadsData && uploadsData.length > 0) {
         for (const upload of uploadsData) {
           if (!upload.station_id) continue;
           
-          const resultsCount = await query<CountResult>(
-            'SELECT COUNT(*) as count FROM results WHERE upload_id = ?', 
-            [upload.id]
-          );
+          const { data: resultsData, error: resultsError } = await supabase
+            .from('results')
+            .select('id')
+            .eq('upload_id', upload.id)
+            .limit(1);
+            
+          if (resultsError) {
+            console.error(`Error checking results for upload ${upload.id}:`, resultsError);
+            continue;
+          }
           
-          if (resultsCount[0]?.count > 0) {
+          if (resultsData && resultsData.length > 0) {
             validStationIds.add(upload.station_id);
           }
         }
       }
-
+      
       // Get total votes from results
-      const resultsData = await query<VotesResult>('SELECT SUM(votes) as totalVotes FROM results');
-      const totalVotesCounted = resultsData[0]?.totalVotes || 0;
+      const { data: resultsData, error: resultsError } = await supabase
+        .from('results')
+        .select('votes');
+        
+      if (resultsError) {
+        console.error("Error fetching results:", resultsError);
+        throw resultsError;
+      }
       
-      // Get voter statistics from the table
-      const voterStats = validStationIds.size > 0 
-        ? await query<VoterStatsResult>(
-            'SELECT SUM(male_voters) as totalMale, SUM(female_voters) as totalFemale, SUM(total_voters) as totalVoters, SUM(wasted_ballots) as wastedBallots FROM voter_statistics WHERE station_id IN (?)', 
-            [Array.from(validStationIds)]
-          )
-        : [{ totalMale: 0, totalFemale: 0, totalVoters: 0, wastedBallots: 0 }];
+      const totalVotesCounted = resultsData ? 
+        resultsData.reduce((sum, item) => sum + (item.votes || 0), 0) : 0;
       
-      const totalMale = voterStats[0]?.totalMale || 0;
-      const totalFemale = voterStats[0]?.totalFemale || 0;
-      const wastedBallots = voterStats[0]?.wastedBallots || 0;
+      // Get voter statistics
+      const { data: voterStatsData, error: voterStatsError } = await supabase
+        .from('voter_statistics')
+        .select('male_voters, female_voters, total_voters, wasted_ballots');
+        
+      if (voterStatsError) {
+        console.error("Error fetching voter statistics:", voterStatsError);
+        throw voterStatsError;
+      }
+      
+      let totalMale = 0;
+      let totalFemale = 0;
+      let totalVoters = 0; 
+      let totalWastedBallots = 0;
+      
+      if (voterStatsData && voterStatsData.length > 0) {
+        totalMale = voterStatsData.reduce((sum, item) => sum + (item.male_voters || 0), 0);
+        totalFemale = voterStatsData.reduce((sum, item) => sum + (item.female_voters || 0), 0);
+        totalVoters = voterStatsData.reduce((sum, item) => sum + (item.total_voters || 0), 0);
+        totalWastedBallots = voterStatsData.reduce((sum, item) => sum + (item.wasted_ballots || 0), 0);
+      }
       
       setStats({
         totalStations,
         uploadedStations: validStationIds.size,
         maleVoters: totalMale,
         femaleVoters: totalFemale,
-        totalVoters: totalVotesCounted,
+        totalVoters: totalVoters > 0 ? totalVoters : totalVotesCounted,
         totalVotesCounted,
-        wastedBallots
+        wastedBallots: totalWastedBallots
       });
       
       setLastUpdated(new Date());
@@ -103,7 +123,7 @@ const StatsCards = () => {
         totalMale,
         totalFemale,
         totalVotesCounted,
-        wastedBallots
+        totalWastedBallots
       });
     } catch (error) {
       console.error("Error fetching stats:", error);

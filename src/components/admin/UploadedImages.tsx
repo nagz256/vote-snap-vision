@@ -2,9 +2,10 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { query } from "@/integrations/mysql/client";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, Download } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface ImageItem {
   id: string;
@@ -14,79 +15,57 @@ interface ImageItem {
   district: string;
 }
 
-interface ImageQueryResult {
-  id: string;
-  image_path: string;
-  timestamp: string;
-  stationName: string;
-  district: string;
-}
-
 const UploadedImages = () => {
   const [uploads, setUploads] = useState<ImageItem[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchUploads = async () => {
       try {
-        const data = await query<ImageQueryResult>(`
-          SELECT 
-            u.id,
-            u.image_path,
-            u.timestamp,
-            p.name as stationName,
-            p.district
-          FROM 
-            uploads u
-          JOIN 
-            polling_stations p ON u.station_id = p.id
-          ORDER BY 
-            u.timestamp DESC
-        `);
+        setIsLoading(true);
         
-        // If no data returned, use mock data for demonstration
-        if (!data || data.length === 0) {
-          const mockData = [
-            {
-              id: "1",
-              image_path: "https://placehold.co/600x400/png",
-              timestamp: new Date().toISOString(),
-              stationName: "Central Station",
-              district: "Downtown"
-            },
-            {
-              id: "2",
-              image_path: "https://placehold.co/600x400/png",
-              timestamp: new Date(Date.now() - 3600000).toISOString(),
-              stationName: "East Wing",
-              district: "Eastside"
-            }
-          ];
+        const { data, error } = await supabase
+          .from('uploads')
+          .select(`
+            id,
+            image_path,
+            timestamp,
+            polling_stations (
+              name,
+              district
+            )
+          `)
+          .order('timestamp', { ascending: false });
           
-          const formattedMockData = mockData.map((item) => ({
-            id: item.id,
-            imagePath: item.image_path,
-            timestamp: item.timestamp,
-            stationName: item.stationName,
-            district: item.district
-          }));
-          
-          setUploads(formattedMockData);
+        if (error) {
+          console.error("Error fetching uploads:", error);
+          toast.error("Failed to load uploads");
+          setIsLoading(false);
           return;
         }
         
-        const formattedData = data?.map((item) => ({
+        if (!data || data.length === 0) {
+          console.log("No uploads found in database");
+          setUploads([]);
+          setIsLoading(false);
+          return;
+        }
+        
+        const formattedData = data.map(item => ({
           id: item.id,
           imagePath: item.image_path,
           timestamp: item.timestamp,
-          stationName: item.stationName || "Unknown",
-          district: item.district || "Unknown"
-        })) || [];
+          stationName: item.polling_stations?.name || "Unknown Station",
+          district: item.polling_stations?.district || "Unknown District"
+        }));
         
         setUploads(formattedData);
       } catch (error) {
         console.error("Error fetching uploads:", error);
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -114,7 +93,11 @@ const UploadedImages = () => {
           <CardTitle>Uploaded DR Forms</CardTitle>
         </CardHeader>
         <CardContent>
-          {uploads.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin h-8 w-8 border-4 border-purple-500 rounded-full border-t-transparent"></div>
+            </div>
+          ) : uploads.length === 0 ? (
             <p className="text-center py-4 text-muted-foreground">No forms have been uploaded yet</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

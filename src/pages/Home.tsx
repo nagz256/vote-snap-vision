@@ -1,7 +1,9 @@
+
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
-import { query } from "@/integrations/mysql/client";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Home = () => {
   const [stats, setStats] = useState({
@@ -10,6 +12,7 @@ const Home = () => {
     districtsCount: 0,
     candidatesCount: 0
   });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchHomeStats();
@@ -26,82 +29,87 @@ const Home = () => {
 
   const fetchHomeStats = async () => {
     try {
-      // Get total number of polling stations
-      const totalStationsResult = await query<{count: number}>('SELECT COUNT(*) as count FROM polling_stations');
-      const totalStations = totalStationsResult[0]?.count || 0;
+      setIsLoading(true);
       
-      // Get uploads with valid results
-      const uploadsData = await query<{id: string, station_id: string}>('SELECT id, station_id FROM uploads');
-      
-      // For uploads with valid results, we need to check the results table
-      const validStationIds = new Set<string>();
-      
-      if (uploadsData && uploadsData.length > 0) {
-        for (const upload of uploadsData) {
-          if (!upload.station_id) continue;
-          
-          const resultsCount = await query<{count: number}>(
-            'SELECT COUNT(*) as count FROM results WHERE upload_id = ?', 
-            [upload.id]
-          );
-          
-          if (resultsCount[0]?.count > 0) {
-            validStationIds.add(upload.station_id);
-          }
-        }
-      }
-      
-      // Only count districts with valid submissions
-      const validDistricts = new Set<string>();
-      
-      if (validStationIds.size > 0) {
-        const stationsData = await query<{district: string}>(
-          'SELECT district FROM polling_stations WHERE id IN (?)', 
-          [Array.from(validStationIds)]
-        );
+      // Get total stations from Supabase
+      const { data: stationsData, error: stationsError } = await supabase
+        .from('polling_stations')
+        .select('id');
         
-        if (stationsData) {
-          stationsData.forEach(station => {
-            if (station.district) validDistricts.add(station.district);
-          });
-        }
+      if (stationsError) {
+        console.error("Error fetching stations:", stationsError);
+        throw stationsError;
       }
       
-      // Get candidate count with actual votes
-      const candidatesData = await query<{candidate_id: string}>(
-        'SELECT DISTINCT candidate_id FROM results WHERE votes > 0'
-      );
+      const totalStations = stationsData ? stationsData.length : 0;
       
-      const uniqueCandidates = new Set();
-      if (candidatesData) {
-        candidatesData.forEach(result => {
-          if (result.candidate_id) uniqueCandidates.add(result.candidate_id);
+      // Get unique districts
+      const { data: districtsData, error: districtsError } = await supabase
+        .from('polling_stations')
+        .select('district')
+        .order('district');
+        
+      if (districtsError) {
+        console.error("Error fetching districts:", districtsError);
+        throw districtsError;
+      }
+      
+      // Get unique districts with Set
+      const uniqueDistricts = new Set();
+      if (districtsData) {
+        districtsData.forEach(item => {
+          if (item.district) uniqueDistricts.add(item.district);
         });
       }
       
+      // Get uploads to determine submitted stations
+      const { data: uploadsData, error: uploadsError } = await supabase
+        .from('uploads')
+        .select('station_id');
+        
+      if (uploadsError) {
+        console.error("Error fetching uploads:", uploadsError);
+        throw uploadsError;
+      }
+      
+      const submittedStationIds = new Set();
+      if (uploadsData) {
+        uploadsData.forEach(upload => {
+          if (upload.station_id) submittedStationIds.add(upload.station_id);
+        });
+      }
+      
+      // Get candidate count
+      const { data: candidatesData, error: candidatesError } = await supabase
+        .from('candidates')
+        .select('id');
+        
+      if (candidatesError) {
+        console.error("Error fetching candidates:", candidatesError);
+        throw candidatesError;
+      }
+      
+      const candidatesCount = candidatesData ? candidatesData.length : 0;
+      
       setStats({
-        stationsSubmitted: validStationIds.size,
-        totalStations: totalStations || 0,
-        districtsCount: validDistricts.size,
-        candidatesCount: uniqueCandidates.size
+        stationsSubmitted: submittedStationIds.size,
+        totalStations: totalStations,
+        districtsCount: uniqueDistricts.size,
+        candidatesCount: candidatesCount
       });
       
       console.log("Home stats updated:", {
-        stationsSubmitted: validStationIds.size, 
+        stationsSubmitted: submittedStationIds.size, 
         totalStations,
-        districtsCount: validDistricts.size,
-        candidatesCount: uniqueCandidates.size
+        districtsCount: uniqueDistricts.size,
+        candidatesCount
       });
+      
     } catch (error) {
       console.error('Error fetching home stats:', error);
-      
-      // Use fallback values for stats
-      setStats({
-        stationsSubmitted: 42,
-        totalStations: 120,
-        districtsCount: 8,
-        candidatesCount: 6
-      });
+      toast.error("Failed to fetch statistics");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -132,19 +140,37 @@ const Home = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Stations</h3>
-            <p className="text-3xl font-bold text-purple-dark">{stats.stationsSubmitted} / {stats.totalStations}</p>
+            {isLoading ? (
+              <div className="flex justify-center py-2">
+                <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <p className="text-3xl font-bold text-purple-dark">{stats.stationsSubmitted} / {stats.totalStations}</p>
+            )}
             <p className="text-sm text-foreground/70 mt-1">Results Submitted</p>
           </div>
           
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Districts</h3>
-            <p className="text-3xl font-bold text-purple-dark">{stats.districtsCount}</p>
+            {isLoading ? (
+              <div className="flex justify-center py-2">
+                <div className="animate-pulse h-8 w-8 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <p className="text-3xl font-bold text-purple-dark">{stats.districtsCount}</p>
+            )}
             <p className="text-sm text-foreground/70 mt-1">Being Monitored</p>
           </div>
           
           <div className="glass-container text-center">
             <h3 className="text-xl font-medium mb-2">Candidates</h3>
-            <p className="text-3xl font-bold text-purple-dark">{stats.candidatesCount}</p>
+            {isLoading ? (
+              <div className="flex justify-center py-2">
+                <div className="animate-pulse h-8 w-8 bg-gray-200 rounded"></div>
+              </div>
+            ) : (
+              <p className="text-3xl font-bold text-purple-dark">{stats.candidatesCount}</p>
+            )}
             <p className="text-sm text-foreground/70 mt-1">In Current Election</p>
           </div>
         </div>
