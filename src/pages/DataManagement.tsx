@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { useVoteSnap } from "@/context/VoteSnapContext";
 
+// Define valid table names as a type for type safety
+type ValidTableName = "uploads" | "results" | "voter_statistics" | "candidates";
+
 const DataManagement = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -88,13 +91,14 @@ const DataManagement = () => {
         toast.success("All data has been successfully deleted");
       } else {
         // Type checking to ensure we only use valid table names
-        const validTables = ["uploads", "results", "voter_statistics", "candidates"];
-        if (validTables.includes(selectedTable)) {
+        const validTables: ValidTableName[] = ["uploads", "results", "voter_statistics", "candidates"];
+        if (validTables.includes(selectedTable as ValidTableName)) {
           console.log(`Deleting all ${selectedTable}...`);
           
           try {
+            // Use type assertion to let TypeScript know this is a valid table name
             const { error } = await supabase
-              .from(selectedTable)
+              .from(selectedTable as ValidTableName)
               .delete()
               .neq('id', '00000000-0000-0000-0000-000000000000');
               
