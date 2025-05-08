@@ -58,19 +58,44 @@ const Agent = () => {
   }, [voterStats.maleVoters, voterStats.femaleVoters]);
 
   useEffect(() => {
-    if (!isAdmin) {
-      refreshStations();
-    }
-  }, [isAdmin]);
+    // Always fetch stations whether user is admin or not
+    refreshStations();
+  }, []);
 
   const refreshStations = async () => {
     try {
       setIsRefreshing(true);
-      const stations = await getAvailableStations();
-      if (stations.length === 0) {
+      
+      // Query stations directly from Supabase
+      const { data: stationsData, error: stationsError } = await supabase
+        .from('polling_stations')
+        .select('*')
+        .order('name');
+      
+      if (stationsError) {
+        throw stationsError;
+      }
+      
+      // Get already submitted stations to filter them out
+      const { data: uploadsData, error: uploadsError } = await supabase
+        .from('uploads')
+        .select('station_id');
+        
+      if (uploadsError) {
+        throw uploadsError;
+      }
+      
+      // Filter out stations that already have uploads
+      const submittedStationIds = uploadsData.map(upload => upload.station_id);
+      const availableStations = stationsData.filter(station => 
+        !submittedStationIds.includes(station.id)
+      );
+      
+      if (availableStations.length === 0) {
         sonnerToast.info("No available polling stations found. All may have been submitted already.");
       }
-      setAvailableStations(stations);
+      
+      setAvailableStations(availableStations);
       setIsRefreshing(false);
     } catch (error) {
       console.error("Error fetching available stations:", error);
@@ -328,15 +353,17 @@ const Agent = () => {
                 </>
               )}
             </Button>
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleReset}
-              className="flex items-center gap-1"
-            >
-              <Trash2 size={14} className="mr-1" />
-              Reset All Data
-            </Button>
+            {isAdmin && (
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={handleReset}
+                className="flex items-center gap-1"
+              >
+                <Trash2 size={14} className="mr-1" />
+                Reset All Data
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -365,7 +392,7 @@ const Agent = () => {
             </Select>
             {availableStations.length === 0 && (
               <p className="text-sm text-amber-600">
-                No available polling stations found. Use the refresh button or reset the data.
+                No available polling stations found. Use the refresh button or add stations in the admin panel.
               </p>
             )}
           </div>
