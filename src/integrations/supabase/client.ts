@@ -15,4 +15,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
       eventsPerSecond: 10,
     },
   },
+  persistSession: true, // Ensure session persistence
+  autoRefreshToken: true, // Auto refresh token for better persistence
 });

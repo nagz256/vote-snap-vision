@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -452,7 +453,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
         if (stationsError) throw stationsError;
         
-        console.log("All stations from Supabase:", allStations);
+        console.log("All stations from Supabase:", allStations?.length);
         
         // Get uploads to check which stations are already submitted
         const { data: uploads, error: uploadsError } = await supabase
@@ -461,19 +462,19 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
         if (uploadsError) throw uploadsError;
         
-        console.log("Uploads from Supabase:", uploads);
+        console.log("Uploads from Supabase:", uploads?.length);
         
         // Extract unique station IDs that have been submitted
         const submittedIds = uploads ? [...new Set(uploads.map(u => u.station_id))] : [];
         console.log("Submitted station IDs:", submittedIds);
         
         // Filter out submitted stations
-        const availableStations = allStations.filter(station => 
+        const availableStations = allStations?.filter(station => 
           !submittedIds.includes(station.id)
-        );
+        ) || [];
         
         console.log("Available stations from Supabase:", availableStations.length);
-        return availableStations || [];
+        return availableStations;
       } catch (supabaseError) {
         console.error("Error fetching available stations from Supabase:", supabaseError);
         console.log("Falling back to MySQL for available stations");
@@ -486,8 +487,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       // Get all stations whether they've been submitted or not
       const allStations = await query('SELECT * FROM polling_stations ORDER BY name ASC');
         
-      console.log("All stations from MySQL:", allStations);
-      console.log("Submitted stations from MySQL:", submittedStations);
+      console.log("All stations from MySQL:", allStations?.length);
+      console.log("Submitted stations from MySQL:", submittedStations?.length);
       
       if (!submittedStations || submittedStations.length === 0) {
         console.log("No submitted stations found, returning all stations");
@@ -499,12 +500,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       console.log("Submitted station IDs from MySQL:", submittedIds);
 
       // Filter out submitted stations if specified
-      const availableStations = allStations.filter((station: any) => 
+      const availableStations = allStations?.filter((station: any) => 
         !submittedIds.includes(station.id)
-      );
+      ) || [];
 
-      console.log("Available stations after filtering:", availableStations);
-      return availableStations || [];
+      console.log("Available stations after filtering:", availableStations.length);
+      return availableStations;
     } catch (error) {
       console.error("Error in getAvailableStations:", error);
       return [];

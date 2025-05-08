@@ -38,59 +38,67 @@ const PollingStations = () => {
 
   const fetchStations = async () => {
     try {
-      // Try to get from Supabase first
-      try {
-        const { data: stationsData, error } = await supabase
-          .from('polling_stations')
-          .select('*')
-          .order('name');
-          
-        if (error) throw error;
+      setIsLoading(true);
+      // Always try to get from Supabase first
+      const { data: stationsData, error } = await supabase
+        .from('polling_stations')
+        .select('*')
+        .order('name');
         
-        if (stationsData && stationsData.length > 0) {
-          console.log("Fetched stations from Supabase:", stationsData.length);
-          setStations(stationsData);
-          return;
-        }
-      } catch (supabaseError) {
-        console.error("Error fetching stations from Supabase:", supabaseError);
-        console.log("Falling back to MySQL for stations");
+      if (error) {
+        console.error("Error fetching from Supabase:", error);
+        throw error;
       }
       
-      // Fallback to MySQL
-      const data = await query<PollingStation>('SELECT * FROM polling_stations ORDER BY name');
+      console.log("Fetched stations from Supabase:", stationsData?.length);
       
-      // If no data, use mock data for demonstration
-      if (!data || data.length === 0) {
-        const mockData = [
-          {
-            id: "1",
-            name: "Central Station",
-            district: "Downtown",
-            created_at: new Date().toISOString()
-          },
-          {
-            id: "2",
-            name: "East Wing",
-            district: "Eastside",
-            created_at: new Date().toISOString()
-          },
-          {
-            id: "3",
-            name: "South County",
-            district: "Rural",
-            created_at: new Date().toISOString()
-          }
-        ];
-        
-        setStations(mockData);
+      if (stationsData && stationsData.length > 0) {
+        setStations(stationsData);
+        setIsLoading(false);
         return;
       }
       
-      setStations(data);
+      // If no Supabase data, fall back to MySQL
+      try {
+        const mysqlData = await query<PollingStation>('SELECT * FROM polling_stations ORDER BY name');
+        
+        if (mysqlData && mysqlData.length > 0) {
+          setStations(mysqlData);
+          setIsLoading(false);
+          return;
+        }
+      } catch (mysqlError) {
+        console.error("Error fetching from MySQL:", mysqlError);
+      }
+      
+      // If no data from any source, use mock data
+      const mockData = [
+        {
+          id: "1",
+          name: "Central Station",
+          district: "Downtown",
+          created_at: new Date().toISOString()
+        },
+        {
+          id: "2",
+          name: "East Wing",
+          district: "Eastside",
+          created_at: new Date().toISOString()
+        },
+        {
+          id: "3",
+          name: "South County",
+          district: "Rural",
+          created_at: new Date().toISOString()
+        }
+      ];
+      
+      setStations(mockData);
     } catch (error) {
       console.error("Error fetching stations:", error);
       toast.error("Failed to load polling stations");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -135,6 +143,18 @@ const PollingStations = () => {
           if (error) throw error;
           toast.success("Polling station added successfully");
         }
+        
+        // Immediately update the local state to reflect changes
+        if (isEditing && currentId) {
+          setStations(prev => prev.map(station => 
+            station.id === currentId ? 
+              {...station, name: formData.name, district: formData.district} : 
+              station
+          ));
+        } else {
+          // For new stations, we need to fetch to get the new ID
+          await fetchStations();
+        }
       } catch (supabaseError) {
         console.error("Error saving via Supabase:", supabaseError);
         console.log("Falling back to MySQL for save operation");
@@ -145,12 +165,30 @@ const PollingStations = () => {
             'UPDATE polling_stations SET name = ?, district = ? WHERE id = ?', 
             [formData.name, formData.district, currentId]
           );
+          
+          // Update local state
+          setStations(prev => prev.map(station => 
+            station.id === currentId ? 
+              {...station, name: formData.name, district: formData.district} : 
+              station
+          ));
+          
           toast.success("Polling station updated successfully");
         } else {
-          await insertQuery(
+          const result = await insertQuery(
             'INSERT INTO polling_stations (name, district) VALUES (?, ?)', 
             [formData.name, formData.district]
           );
+          
+          if (result && result.id) {
+            // Add to local state with the new ID
+            setStations(prev => [...prev, {
+              id: result.id,
+              name: formData.name,
+              district: formData.district
+            }]);
+          }
+          
           toast.success("Polling station added successfully");
         }
       }
@@ -159,7 +197,7 @@ const PollingStations = () => {
       setIsEditing(false);
       setCurrentId(null);
       
-      await fetchStations();
+      // Refresh available stations in the context
       await refreshAvailableStations();
     } catch (error: any) {
       console.error("Error saving polling station:", error);
@@ -179,8 +217,7 @@ const PollingStations = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this polling station?")) return;
-    
+    setIsLoading(true);
     try {
       // Check if station has uploads first
       try {
@@ -193,6 +230,7 @@ const PollingStations = () => {
         
         if (uploads && uploads.length > 0) {
           toast.error("Cannot delete a station with uploaded results");
+          setIsLoading(false);
           return;
         }
         
@@ -204,14 +242,13 @@ const PollingStations = () => {
           
         if (deleteError) throw deleteError;
         
-        toast.success("Polling station deleted successfully");
-        
         // Remove from local state immediately
         setStations(prev => prev.filter(station => station.id !== id));
         
+        toast.success("Polling station deleted successfully");
+        
         // Refresh available stations in context
         await refreshAvailableStations();
-        
       } catch (supabaseError) {
         console.error("Error with Supabase deletion:", supabaseError);
         console.log("Falling back to MySQL for deletion");
@@ -228,16 +265,20 @@ const PollingStations = () => {
         }
         
         await query('DELETE FROM polling_stations WHERE id = ?', [id]);
-        toast.success("Polling station deleted successfully");
         
         // Remove from local state
         setStations(prev => prev.filter(station => station.id !== id));
         
+        toast.success("Polling station deleted successfully");
+        
+        // Refresh available stations in context
         await refreshAvailableStations();
       }
     } catch (error: any) {
       console.error("Error deleting polling station:", error);
       toast.error(`Failed to delete polling station: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -253,6 +294,9 @@ const PollingStations = () => {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Manage Polling Stations</h1>
+        <Button onClick={fetchStations} variant="outline" disabled={isLoading}>
+          Refresh
+        </Button>
       </div>
 
       <Card className="glass-card">
@@ -297,6 +341,7 @@ const PollingStations = () => {
                     setIsEditing(false);
                     setCurrentId(null);
                   }}
+                  disabled={isLoading}
                 >
                   Cancel
                 </Button>
@@ -318,7 +363,11 @@ const PollingStations = () => {
           <CardTitle>Polling Stations</CardTitle>
         </CardHeader>
         <CardContent>
-          {stations.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : stations.length === 0 ? (
             <p className="text-center py-4 text-muted-foreground">No polling stations added yet</p>
           ) : (
             <div className="grid grid-cols-1 gap-4">
@@ -336,6 +385,7 @@ const PollingStations = () => {
                       variant="outline" 
                       size="sm"
                       onClick={() => handleEdit(station)}
+                      disabled={isLoading}
                     >
                       <Pencil size={16} />
                     </Button>
@@ -343,6 +393,7 @@ const PollingStations = () => {
                       variant="outline" 
                       size="sm"
                       onClick={() => handleDelete(station.id)}
+                      disabled={isLoading}
                     >
                       <Trash2 size={16} />
                     </Button>
