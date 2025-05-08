@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import { InfoIcon, Users, Trash2 } from "lucide-react";
+import { InfoIcon, Users, Trash2, AlertTriangle } from "lucide-react";
 
 interface VoterStatisticsProps {
   maleVoters: number;

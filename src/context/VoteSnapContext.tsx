@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -222,10 +221,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
   const refreshAvailableStations = async () => {
     try {
+      console.log("Refreshing available stations...");
       const stations = await getAvailableStations();
       setAvailableStations(stations);
+      return stations;
     } catch (error) {
       console.error("Error refreshing available stations:", error);
+      return [];
     }
   };
 
@@ -450,6 +452,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
         if (stationsError) throw stationsError;
         
+        console.log("All stations from Supabase:", allStations);
+        
         // Get uploads to check which stations are already submitted
         const { data: uploads, error: uploadsError } = await supabase
           .from('uploads')
@@ -457,8 +461,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
         if (uploadsError) throw uploadsError;
         
+        console.log("Uploads from Supabase:", uploads);
+        
         // Extract unique station IDs that have been submitted
         const submittedIds = uploads ? [...new Set(uploads.map(u => u.station_id))] : [];
+        console.log("Submitted station IDs:", submittedIds);
         
         // Filter out submitted stations
         const availableStations = allStations.filter(station => 
@@ -479,7 +486,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       // Get all stations whether they've been submitted or not
       const allStations = await query('SELECT * FROM polling_stations ORDER BY name ASC');
         
-      console.log("All stations:", allStations);
+      console.log("All stations from MySQL:", allStations);
+      console.log("Submitted stations from MySQL:", submittedStations);
       
       if (!submittedStations || submittedStations.length === 0) {
         console.log("No submitted stations found, returning all stations");
@@ -488,7 +496,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
 
       // Get unique station IDs that have been submitted
       const submittedIds = [...new Set(submittedStations.map((s: any) => s.station_id))];
-      console.log("Submitted station IDs:", submittedIds);
+      console.log("Submitted station IDs from MySQL:", submittedIds);
 
       // Filter out submitted stations if specified
       const availableStations = allStations.filter((station: any) => 

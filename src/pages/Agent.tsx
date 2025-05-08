@@ -65,42 +65,18 @@ const Agent = () => {
     try {
       setIsRefreshing(true);
       
-      // Query stations directly from Supabase
-      const { data: stationsData, error: stationsError } = await supabase
-        .from('polling_stations')
-        .select('*')
-        .order('name');
-      
-      if (stationsError) {
-        throw stationsError;
-      }
-      
-      // Get already submitted stations to filter them out
-      const { data: uploadsData, error: uploadsError } = await supabase
-        .from('uploads')
-        .select('station_id');
-        
-      if (uploadsError) {
-        throw uploadsError;
-      }
-      
-      // Filter out stations that already have uploads
-      const submittedStationIds = uploadsData.map(upload => upload.station_id);
-      const availableStations = stationsData.filter(station => 
-        !submittedStationIds.includes(station.id)
-      );
+      const availableStations = await refreshAvailableStations();
       
       if (availableStations.length === 0) {
         sonnerToast.info("No available polling stations found. All may have been submitted already.");
       }
       
-      setAvailableStations(availableStations);
       setIsRefreshing(false);
     } catch (error) {
       console.error("Error fetching available stations:", error);
       toast({
         title: "Error",
-        description: "Failed to load available stations.",
+        description: "Failed to load available polling stations.",
       });
       setIsRefreshing(false);
     }

@@ -15,6 +15,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
 
 type PollingStation = {
   id: string;
@@ -37,6 +38,26 @@ const PollingStations = () => {
 
   const fetchStations = async () => {
     try {
+      // Try to get from Supabase first
+      try {
+        const { data: stationsData, error } = await supabase
+          .from('polling_stations')
+          .select('*')
+          .order('name');
+          
+        if (error) throw error;
+        
+        if (stationsData && stationsData.length > 0) {
+          console.log("Fetched stations from Supabase:", stationsData.length);
+          setStations(stationsData);
+          return;
+        }
+      } catch (supabaseError) {
+        console.error("Error fetching stations from Supabase:", supabaseError);
+        console.log("Falling back to MySQL for stations");
+      }
+      
+      // Fallback to MySQL
       const data = await query<PollingStation>('SELECT * FROM polling_stations ORDER BY name');
       
       // If no data, use mock data for demonstration
@@ -90,18 +111,48 @@ const PollingStations = () => {
         return;
       }
       
-      if (isEditing && currentId) {
-        await query(
-          'UPDATE polling_stations SET name = ?, district = ? WHERE id = ?', 
-          [formData.name, formData.district, currentId]
-        );
-        toast.success("Polling station updated successfully");
-      } else {
-        await insertQuery(
-          'INSERT INTO polling_stations (name, district) VALUES (?, ?)', 
-          [formData.name, formData.district]
-        );
-        toast.success("Polling station added successfully");
+      // Try with Supabase first
+      try {
+        if (isEditing && currentId) {
+          const { error } = await supabase
+            .from('polling_stations')
+            .update({ 
+              name: formData.name, 
+              district: formData.district 
+            })
+            .eq('id', currentId);
+            
+          if (error) throw error;
+          toast.success("Polling station updated successfully");
+        } else {
+          const { error } = await supabase
+            .from('polling_stations')
+            .insert({ 
+              name: formData.name, 
+              district: formData.district 
+            });
+            
+          if (error) throw error;
+          toast.success("Polling station added successfully");
+        }
+      } catch (supabaseError) {
+        console.error("Error saving via Supabase:", supabaseError);
+        console.log("Falling back to MySQL for save operation");
+        
+        // Fallback to MySQL
+        if (isEditing && currentId) {
+          await query(
+            'UPDATE polling_stations SET name = ?, district = ? WHERE id = ?', 
+            [formData.name, formData.district, currentId]
+          );
+          toast.success("Polling station updated successfully");
+        } else {
+          await insertQuery(
+            'INSERT INTO polling_stations (name, district) VALUES (?, ?)', 
+            [formData.name, formData.district]
+          );
+          toast.success("Polling station added successfully");
+        }
       }
       
       setFormData({ name: "", district: "" });
@@ -131,19 +182,59 @@ const PollingStations = () => {
     if (!window.confirm("Are you sure you want to delete this polling station?")) return;
     
     try {
-      const uploads = await query<{id: string}>(
-        'SELECT id FROM uploads WHERE station_id = ?', 
-        [id]
-      );
-      
-      if (uploads && uploads.length > 0) {
-        return toast.error("Cannot delete a station with uploaded results");
+      // Check if station has uploads first
+      try {
+        const { data: uploads, error: uploadsError } = await supabase
+          .from('uploads')
+          .select('id')
+          .eq('station_id', id);
+          
+        if (uploadsError) throw uploadsError;
+        
+        if (uploads && uploads.length > 0) {
+          toast.error("Cannot delete a station with uploaded results");
+          return;
+        }
+        
+        // Proceed with deletion
+        const { error: deleteError } = await supabase
+          .from('polling_stations')
+          .delete()
+          .eq('id', id);
+          
+        if (deleteError) throw deleteError;
+        
+        toast.success("Polling station deleted successfully");
+        
+        // Remove from local state immediately
+        setStations(prev => prev.filter(station => station.id !== id));
+        
+        // Refresh available stations in context
+        await refreshAvailableStations();
+        
+      } catch (supabaseError) {
+        console.error("Error with Supabase deletion:", supabaseError);
+        console.log("Falling back to MySQL for deletion");
+        
+        // Fallback to MySQL
+        const uploads = await query<{id: string}>(
+          'SELECT id FROM uploads WHERE station_id = ?', 
+          [id]
+        );
+        
+        if (uploads && uploads.length > 0) {
+          toast.error("Cannot delete a station with uploaded results");
+          return;
+        }
+        
+        await query('DELETE FROM polling_stations WHERE id = ?', [id]);
+        toast.success("Polling station deleted successfully");
+        
+        // Remove from local state
+        setStations(prev => prev.filter(station => station.id !== id));
+        
+        await refreshAvailableStations();
       }
-      
-      await query('DELETE FROM polling_stations WHERE id = ?', [id]);
-      toast.success("Polling station deleted successfully");
-      await fetchStations();
-      await refreshAvailableStations();
     } catch (error: any) {
       console.error("Error deleting polling station:", error);
       toast.error(`Failed to delete polling station: ${error.message || "Unknown error"}`);
