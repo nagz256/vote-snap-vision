@@ -1,3 +1,4 @@
+
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,10 +68,11 @@ const Agent = () => {
       
       const availableStations = await refreshAvailableStations();
       
-      if (availableStations.length === 0) {
+      if (availableStations && availableStations.length === 0) {
         sonnerToast.info("No available polling stations found. All may have been submitted already.");
       }
       
+      setAvailableStations(availableStations || []);
       setIsRefreshing(false);
     } catch (error) {
       console.error("Error fetching available stations:", error);

@@ -19,7 +19,7 @@ interface VoteSnapContextType {
   logout: () => void;
   addUpload: (upload: Omit<Upload, "id" | "timestamp"> & { voterStatistics?: VoterStatistics }, results: ExtractedResult[]) => Promise<void>;
   getAvailableStations: () => Promise<any[]>;
-  refreshAvailableStations: () => Promise<void>;
+  refreshAvailableStations: () => Promise<any[]>; // Changed from Promise<void> to Promise<any[]>
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<{
     results: ExtractedResult[];
