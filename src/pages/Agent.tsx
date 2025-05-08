@@ -1,4 +1,3 @@
-
 import { useState, useRef, ChangeEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,9 +52,9 @@ const Agent = () => {
 
   // Calculate total voters whenever the individual voter counts change
   useEffect(() => {
-    const total = voterStats.maleVoters + voterStats.femaleVoters;
+    const total = voterStats.maleVoters + voterStats.femaleVoters + voterStats.wastedBallots;
     setVoterStats(prev => ({ ...prev, totalVoters: total }));
-  }, [voterStats.maleVoters, voterStats.femaleVoters]);
+  }, [voterStats.maleVoters, voterStats.femaleVoters, voterStats.wastedBallots]);
 
   useEffect(() => {
     // Always fetch stations whether user is admin or not

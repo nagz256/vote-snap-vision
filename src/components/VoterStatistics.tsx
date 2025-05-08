@@ -14,13 +14,13 @@ interface VoterStatisticsProps {
 }
 
 const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters, onUpdate }: VoterStatisticsProps) => {
-  // Automatically update total voters whenever gender counts change
+  // Automatically update total voters whenever gender counts or wasted ballots change
   useEffect(() => {
-    const calculatedTotal = maleVoters + femaleVoters;
+    const calculatedTotal = maleVoters + femaleVoters + wastedBallots;
     if (calculatedTotal !== totalVoters) {
       onUpdate('totalVoters', calculatedTotal);
     }
-  }, [maleVoters, femaleVoters, totalVoters, onUpdate]);
+  }, [maleVoters, femaleVoters, wastedBallots, totalVoters, onUpdate]);
 
   return (
     <Card className="glass-card shadow-md hover:shadow-lg transition-shadow mt-6">
@@ -32,7 +32,7 @@ const VoterStatistics = ({ maleVoters, femaleVoters, wastedBallots, totalVoters,
           </HoverCardTrigger>
           <HoverCardContent className="w-80 text-sm bg-background">
             <p>Enter the number of male and female voters along with wasted ballots from this polling station. 
-            The total will be calculated automatically from male and female voters.</p>
+            The total will be calculated automatically as the sum of male voters, female voters, and wasted ballots.</p>
           </HoverCardContent>
         </HoverCard>
       </CardHeader>

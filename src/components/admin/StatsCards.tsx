@@ -1,7 +1,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
+import { ChartBarIcon, UsersIcon, MapPin, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -86,7 +86,7 @@ const StatsCards = () => {
       // Get voter statistics
       const { data: voterStatsData, error: voterStatsError } = await supabase
         .from('voter_statistics')
-        .select('male_voters, female_voters, total_voters, wasted_ballots');
+        .select('male_voters, female_voters, wasted_ballots, total_voters');
         
       if (voterStatsError) {
         console.error("Error fetching voter statistics:", voterStatsError);
@@ -95,14 +95,16 @@ const StatsCards = () => {
       
       let totalMale = 0;
       let totalFemale = 0;
-      let totalVoters = 0; 
       let totalWastedBallots = 0;
+      let totalVoters = 0;
       
       if (voterStatsData && voterStatsData.length > 0) {
         totalMale = voterStatsData.reduce((sum, item) => sum + (item.male_voters || 0), 0);
         totalFemale = voterStatsData.reduce((sum, item) => sum + (item.female_voters || 0), 0);
-        totalVoters = voterStatsData.reduce((sum, item) => sum + (item.total_voters || 0), 0);
         totalWastedBallots = voterStatsData.reduce((sum, item) => sum + (item.wasted_ballots || 0), 0);
+        
+        // Calculate the total using male, female and wasted ballots
+        totalVoters = totalMale + totalFemale + totalWastedBallots;
       }
       
       setStats({
@@ -110,7 +112,7 @@ const StatsCards = () => {
         uploadedStations: validStationIds.size,
         maleVoters: totalMale,
         femaleVoters: totalFemale,
-        totalVoters: totalVoters > 0 ? totalVoters : totalVotesCounted,
+        totalVoters: totalVoters,
         totalVotesCounted,
         wastedBallots: totalWastedBallots
       });
@@ -122,8 +124,9 @@ const StatsCards = () => {
         uploadedStations: validStationIds.size,
         totalMale,
         totalFemale,
-        totalVotesCounted,
-        totalWastedBallots
+        totalWastedBallots,
+        totalVoters,
+        totalVotesCounted
       });
     } catch (error) {
       console.error("Error fetching stats:", error);
