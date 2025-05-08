@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 import StationResultCard from "@/components/admin/StationResultCard";
 import PieCharts from "@/components/admin/PieCharts";
-import { query } from "@/integrations/mysql/client";
+import { supabase } from "@/integrations/supabase/client";
 
 // Define the interface for station results
 interface StationResult {
@@ -29,6 +30,7 @@ const Admin = () => {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [stationResults, setStationResults] = useState<StationResult[]>([]);
+  const [isLoadingResults, setIsLoadingResults] = useState(true);
   
   const { isAdmin, login, logout } = useVoteSnap();
 
@@ -50,53 +52,77 @@ const Admin = () => {
   
   const fetchStationResults = async () => {
     try {
-      console.log("Fetching station results...");
+      setIsLoadingResults(true);
+      console.log("Fetching station results from database...");
       
-      // In a real app, this would fetch from the MySQL database
-      // For now, we'll use mock data
+      // Get all uploads with their station info
+      const { data: uploadsData, error: uploadsError } = await supabase
+        .from('uploads')
+        .select(`
+          id,
+          polling_stations (
+            id,
+            name,
+            district
+          )
+        `);
+        
+      if (uploadsError) {
+        console.error("Error fetching uploads:", uploadsError);
+        setStationResults([]);
+        setIsLoadingResults(false);
+        return;
+      }
       
-      const mockResults: StationResult[] = [
-        {
-          id: "1",
-          station: {
-            name: "Central Station",
-            district: "Downtown"
-          },
-          results: [
-            { candidateName: "John Doe", votes: 120 },
-            { candidateName: "Jane Smith", votes: 85 }
-          ]
-        },
-        {
-          id: "2",
-          station: {
-            name: "East Wing",
-            district: "Eastside"
-          },
-          results: [
-            { candidateName: "John Doe", votes: 95 },
-            { candidateName: "Jane Smith", votes: 105 }
-          ]
-        },
-        {
-          id: "3",
-          station: {
-            name: "South County",
-            district: "Rural"
-          },
-          results: [
-            { candidateName: "John Doe", votes: 75 },
-            { candidateName: "Jane Smith", votes: 65 },
-            { candidateName: "Michael Johnson", votes: 45 }
-          ]
+      if (!uploadsData || uploadsData.length === 0) {
+        console.log("No uploads found");
+        setStationResults([]);
+        setIsLoadingResults(false);
+        return;
+      }
+      
+      // Process each upload to get its results
+      const resultsPromises = uploadsData.map(async (upload) => {
+        const { data: resultData, error: resultError } = await supabase
+          .from('results')
+          .select(`
+            votes,
+            candidates (
+              name
+            )
+          `)
+          .eq('upload_id', upload.id);
+          
+        if (resultError || !resultData || resultData.length === 0) {
+          console.log(`No results for upload ${upload.id}`);
+          return null;
         }
-      ];
+        
+        const formattedResults = resultData.map(item => ({
+          candidateName: item.candidates.name,
+          votes: item.votes
+        }));
+        
+        return {
+          id: upload.id,
+          station: {
+            name: upload.polling_stations?.name || "Unknown Station",
+            district: upload.polling_stations?.district || "Unknown District"
+          },
+          results: formattedResults
+        };
+      });
       
-      setStationResults(mockResults);
-      console.log("Fetched station results:", mockResults);
+      const results = await Promise.all(resultsPromises);
+      const validResults = results.filter(Boolean) as StationResult[];
+      
+      setStationResults(validResults);
+      console.log("Fetched station results:", validResults);
     } catch (error) {
       console.error("Error fetching station results:", error);
       setStationResults([]);
+    } finally {
+      setIsLoadingResults(false);
     }
   };
 
@@ -197,17 +223,23 @@ const Admin = () => {
             <CardTitle>Polling Station Results</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {stationResults.length > 0 ? (
-                stationResults.map(stationResult => (
-                  <StationResultCard key={stationResult.id} stationResult={stationResult} />
-                ))
-              ) : (
-                <div className="col-span-full text-center py-6 text-muted-foreground">
-                  No polling station results available yet
-                </div>
-              )}
-            </div>
+            {isLoadingResults ? (
+              <div className="flex justify-center py-6">
+                <div className="animate-spin h-8 w-8 border-4 border-purple-500 rounded-full border-t-transparent"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {stationResults.length > 0 ? (
+                  stationResults.map(stationResult => (
+                    <StationResultCard key={stationResult.id} stationResult={stationResult} />
+                  ))
+                ) : (
+                  <div className="col-span-full text-center py-6 text-muted-foreground">
+                    No polling station results available yet. Submit results from the Agent Portal.
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

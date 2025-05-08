@@ -8,7 +8,6 @@ import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useVoteSnap } from "@/context/VoteSnapContext";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -37,120 +36,88 @@ const PieCharts = () => {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [hasData, setHasData] = useState(false);
   const { toast } = useToast();
-  const { getTotalVotes } = useVoteSnap();
 
   const fetchData = async () => {
     try {
       setIsRefreshing(true);
       console.log("Fetching vote data for charts...");
       
-      // Try using the VoteSnap context function first
-      const voteData = await getTotalVotes();
-      
-      if (voteData && voteData.length > 0) {
-        console.log("Got vote data from context:", voteData);
-        setTotalVotesData(voteData);
-        setHasData(true);
+      // Try direct Supabase query
+      const { data, error } = await supabase
+        .from('results')
+        .select(`
+          votes,
+          candidates (
+            name
+          )
+        `);
         
-        // Calculate percentage data
-        const totalVotesSum = voteData.reduce((sum, item) => sum + item.votes, 0);
-        const percentData = voteData.map(item => ({
-          ...item,
-          percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
-        }));
+      if (error) {
+        console.error("Error fetching results:", error);
+        toast({
+          title: "Error loading data",
+          description: "Failed to load voting results. Please try again later.",
+          variant: "destructive"
+        });
         
-        setPercentageData(percentData);
-        setLastRefresh(new Date());
+        setHasData(false);
+        setTotalVotesData([]);
+        setPercentageData([]);
         setIsLoading(false);
         setIsRefreshing(false);
         return;
       }
       
-      // If no data from context, try direct Supabase query
-      try {
-        console.log("Trying direct Supabase query for votes...");
-        const { data, error } = await supabase
-          .from('results')
-          .select(`
-            votes,
-            candidates (
-              name
-            )
-          `);
-          
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          // Filter out invalid results
-          const validResults = data.filter(result => 
-            result.candidates && 
-            result.candidates.name && 
-            typeof result.votes === 'number' && 
-            result.votes > 0
-          );
-          
-          if (validResults.length === 0) {
-            console.log("No valid results found in direct Supabase query");
-            setHasData(false);
-            setTotalVotesData([]);
-            setPercentageData([]);
-            setIsLoading(false);
-            setIsRefreshing(false);
-            return;
-          }
-          
-          // Aggregate votes by candidate name
-          const votesByCandidate: Record<string, number> = {};
-          validResults.forEach(result => {
-            const candidateName = result.candidates.name;
-            votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
-          });
-          
-          const votesData = Object.entries(votesByCandidate)
-            .map(([name, votes]) => ({ name, votes }))
-            .sort((a, b) => b.votes - a.votes);
-            
-          setTotalVotesData(votesData);
-          setHasData(true);
-          
-          // Calculate percentage data
-          const totalVotesSum = votesData.reduce((sum, item) => sum + item.votes, 0);
-          const percentData = votesData.map(item => ({
-            ...item,
-            percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
-          }));
-          
-          setPercentageData(percentData);
-        } else {
-          console.log("No results found in Supabase");
-          setHasData(false);
-          setTotalVotesData([]);
-          setPercentageData([]);
-        }
-      } catch (supabaseError) {
-        console.error("Error in direct Supabase query:", supabaseError);
-        
-        // Use mock data as last resort
-        const mockData = [
-          { name: "Sarah Johnson", votes: 120 },
-          { name: "Michael Chen", votes: 95 },
-          { name: "Olivia Rodriguez", votes: 85 },
-          { name: "William Thompson", votes: 75 },
-          { name: "Sophia Patel", votes: 65 }
-        ];
-        
-        setTotalVotesData(mockData);
-        setHasData(true);
-        
-        // Calculate percentage data
-        const totalVotesSum = mockData.reduce((sum, item) => sum + item.votes, 0);
-        const percentData = mockData.map(item => ({
-          ...item,
-          percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
-        }));
-        
-        setPercentageData(percentData);
+      if (!data || data.length === 0) {
+        console.log("No results found in database");
+        setHasData(false);
+        setTotalVotesData([]);
+        setPercentageData([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
       }
+      
+      // Filter out invalid results
+      const validResults = data.filter(result => 
+        result.candidates && 
+        result.candidates.name && 
+        typeof result.votes === 'number' && 
+        result.votes > 0
+      );
+      
+      if (validResults.length === 0) {
+        console.log("No valid results found");
+        setHasData(false);
+        setTotalVotesData([]);
+        setPercentageData([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+      
+      // Aggregate votes by candidate name
+      const votesByCandidate: Record<string, number> = {};
+      validResults.forEach(result => {
+        const candidateName = result.candidates.name;
+        votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
+      });
+      
+      const votesData = Object.entries(votesByCandidate)
+        .map(([name, votes]) => ({ name, votes }))
+        .sort((a, b) => b.votes - a.votes);
+        
+      setTotalVotesData(votesData);
+      setHasData(validResults.length > 0);
+      
+      // Calculate percentage data
+      const totalVotesSum = votesData.reduce((sum, item) => sum + item.votes, 0);
+      const percentData = votesData.map(item => ({
+        ...item,
+        percentage: ((item.votes / Math.max(totalVotesSum, 1)) * 100).toFixed(1)
+      }));
+      
+      setPercentageData(percentData);
       
     } catch (error) {
       console.error("Error fetching vote data:", error);
@@ -220,7 +187,11 @@ const PieCharts = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {hasData && percentageData.length > 0 ? (
+              {isLoading ? (
+                <div className="flex justify-center items-center h-full">
+                  <div className="animate-spin h-8 w-8 border-4 border-purple-500 rounded-full border-t-transparent"></div>
+                </div>
+              ) : hasData && percentageData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -256,7 +227,11 @@ const PieCharts = () => {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {hasData && totalVotesData.length > 0 ? (
+              {isLoading ? (
+                <div className="flex justify-center items-center h-full">
+                  <div className="animate-spin h-8 w-8 border-4 border-purple-500 rounded-full border-t-transparent"></div>
+                </div>
+              ) : hasData && totalVotesData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie

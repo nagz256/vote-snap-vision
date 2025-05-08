@@ -64,6 +64,7 @@ const UploadedImages = () => {
         setUploads(formattedData);
       } catch (error) {
         console.error("Error fetching uploads:", error);
+        toast.error("Failed to load uploads");
       } finally {
         setIsLoading(false);
       }
