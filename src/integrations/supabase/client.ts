@@ -127,7 +127,7 @@ export const formatResultData = (data: {
   };
 };
 
-// Helper functions for working with Supabase filtering
+// Helper functions for working with Supabase filtering - safer approaches
 export const createEqFilter = (column: string, value: any) => {
   return { [column]: { eq: value } };
 };
@@ -136,6 +136,7 @@ export const createNeqFilter = (column: string, value: any) => {
   return { [column]: { neq: value } };
 };
 
-// Use type-safe filters
-export const eq = supabase.eq;
-export const filter = { eq: supabase.eq };
+// Don't export eq and filter from supabase directly, as they're strictly typed
+// and cause issues with string parameters. Instead, provide safer wrappers:
+export const eq = (column: string, value: any) => ({ [column]: value });
+export const filter = { eq: (column: string, value: any) => ({ [column]: value }) };

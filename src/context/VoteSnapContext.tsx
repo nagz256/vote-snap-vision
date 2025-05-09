@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -251,7 +250,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .is('id', true); // This is a workaround to delete all rows
         
         if (resultsError) throw resultsError;
         
@@ -259,7 +258,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .is('id', true); // This is a workaround to delete all rows
         
         if (statsError) throw statsError;
         
@@ -267,7 +266,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .is('id', true); // This is a workaround to delete all rows
         
         if (uploadsError) throw uploadsError;
         
@@ -309,25 +308,27 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       
       // Try with Supabase first
       try {
-        // Insert upload with properly formatted data
-        const formattedUploadData = formatUploadData({
+        // Format upload data properly
+        const formattedData = formatUploadData({
           station_id: uploadData.stationId,
           image_path: uploadData.imagePath
         });
         
-        // Use the properly typed insert method
-        const { data: uploadResult, error: uploadError } = await supabase
+        // Insert as a single item, not an array
+        const { data: uploadResponse, error: uploadError } = await supabase
           .from('uploads')
-          .insert(formattedUploadData)
+          .insert([formattedData])
           .select();
           
         if (uploadError) throw uploadError;
-        if (!uploadResult || uploadResult.length === 0) {
+        
+        // Get the upload ID from the response
+        if (!uploadResponse || uploadResponse.length === 0) {
           throw new Error('Failed to insert upload');
         }
         
-        // Safely access the ID with null checking
-        const uploadId = uploadResult[0]?.id;
+        // Get the upload ID safely
+        const uploadId = uploadResponse[0]?.id;
         if (!uploadId) {
           throw new Error('Failed to get upload ID');
         }
@@ -345,10 +346,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             total_voters: uploadData.voterStatistics.totalVoters
           });
           
-          // Use the properly typed insert method
+          // Insert as array
           const { error: statsError } = await supabase
             .from('voter_statistics')
-            .insert(formattedStatsData);
+            .insert([formattedStatsData]);
             
           if (statsError) console.error("Error inserting voter statistics:", statsError);
         }
@@ -357,11 +358,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         for (const result of results) {
           console.log("Processing result for candidate:", result.candidateName);
           
-          // Find candidate by name - use string directly with eq
+          // Use object literal for filter instead of eq function
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
-            .eq('name', result.candidateName)
+            .match({ name: result.candidateName })
             .maybeSingle();
             
           let candidateId: string;
@@ -370,19 +371,19 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             // Create new candidate if not found
             const formattedCandidateData = formatCandidateData(result.candidateName);
             
-            // Use the properly typed insert method
-            const { data: newCandidate, error: createError } = await supabase
+            // Insert as array
+            const { data: newCandidateResponse, error: createError } = await supabase
               .from('candidates')
-              .insert(formattedCandidateData)
+              .insert([formattedCandidateData])
               .select();
               
-            if (createError || !newCandidate || newCandidate.length === 0) {
+            if (createError || !newCandidateResponse || newCandidateResponse.length === 0) {
               console.error("Error creating new candidate:", createError);
               continue;
             }
             
-            // Safely access the ID with null checking
-            candidateId = newCandidate[0]?.id;
+            // Make sure the ID exists
+            candidateId = newCandidateResponse[0]?.id;
             if (!candidateId) {
               console.error("Failed to get new candidate ID");
               continue;
@@ -391,17 +392,17 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             candidateId = candidateData.id;
           }
           
-          // Insert result with properly formatted data
+          // Insert result
           const formattedResultData = formatResultData({
             upload_id: uploadId,
             candidate_id: candidateId,
             votes: result.votes
           });
           
-          // Use the properly typed insert method
+          // Insert as array
           const { error: resultError } = await supabase
             .from('results')
-            .insert(formattedResultData);
+            .insert([formattedResultData]);
             
           if (resultError) {
             console.error("Error inserting result:", resultError);

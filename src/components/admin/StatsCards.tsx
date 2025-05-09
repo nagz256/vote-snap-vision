@@ -60,7 +60,7 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.id || !upload.station_id) continue;
           
-          // Use string value directly, no eq function needed
+          // Use column-value pairs instead of filter functions
           const resultsResponse = await supabase
             .from('results')
             .select('id')
