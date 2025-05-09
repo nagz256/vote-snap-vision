@@ -34,7 +34,8 @@ const LiveUploadNotification = () => {
             return;
           }
           
-          const stationName = stationData?.name || 'Unknown station';
+          // Use safe property access
+          const stationName = stationData.name || 'Unknown station';
           
           // Show notification
           toast(

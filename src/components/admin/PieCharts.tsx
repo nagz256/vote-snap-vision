@@ -75,7 +75,10 @@ const PieCharts = () => {
         return;
       }
       
-      if (!data || data.length === 0) {
+      // Use safeData to handle the results safely
+      const resultsData = safeData(data);
+
+      if (resultsData.length === 0) {
         console.log("No results found in database");
         setHasData(false);
         setTotalVotesData([]);
@@ -86,7 +89,7 @@ const PieCharts = () => {
       }
       
       // Filter out invalid results
-      const validResults = data.filter((result: any) => 
+      const validResults = resultsData.filter((result: any) => 
         result && 
         result.candidates && 
         result.candidates.name && 
@@ -106,7 +109,7 @@ const PieCharts = () => {
       
       // Aggregate votes by candidate name
       const votesByCandidate: Record<string, number> = {};
-      validResults.forEach(result => {
+      validResults.forEach((result: any) => {
         if (result.candidates && result.candidates.name) {
           const candidateName = result.candidates.name;
           votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
