@@ -22,20 +22,20 @@ const LiveUploadNotification = () => {
           }
 
           // Get station info
-          const { data: stationData, error } = await supabase
+          const { data, error } = await supabase
             .from('polling_stations')
             .select('name')
             .eq('id', payload.new.station_id)
             .single();
             
           // Check if there's an error or no data
-          if (error || !stationData) {
+          if (error || !data) {
             console.error("Error fetching station data:", error);
             return;
           }
           
           // Use safe property access
-          const stationName = stationData.name || 'Unknown station';
+          const stationName = data?.name || 'Unknown station';
           
           // Show notification
           toast(

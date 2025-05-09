@@ -37,7 +37,7 @@ export const safeDataSingle = <T>(response: any): T | null => {
   if (hasError(response) || !response || !response.data) {
     return null;
   }
-  return response.data[0] as T || null;
+  return response.data as T;
 };
 
 // Helper to safely get a property from a potentially erroneous response
@@ -53,9 +53,15 @@ export const safeId = (response: any): string | null => {
   if (hasError(response) || !response || !response.data) {
     return null;
   }
-  return response.data[0]?.id || null;
+  
+  if (Array.isArray(response.data) && response.data.length > 0) {
+    return response.data[0]?.id || null;
+  }
+  
+  return response.data?.id || null;
 };
 
+// Type-safe database insert functions
 // Format data with the correct types for database inserts
 export const formatUploadData = (data: { 
   station_id: string;
