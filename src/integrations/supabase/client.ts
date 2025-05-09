@@ -127,11 +127,14 @@ export const formatResultData = (data: {
   };
 };
 
-// Helper functions to work around TypeScript type constraints for filtering
-export const createEqFilter = (columnName: string, value: any) => {
-  return { [columnName]: value };
+// Helper functions for working with Supabase filtering
+export const createEqFilter = (column: string, value: any) => {
+  return { [column]: { eq: value } };
 };
 
-export const createNeqFilter = (columnName: string, value: any) => {
-  return { [columnName]: { neq: value } };
+export const createNeqFilter = (column: string, value: any) => {
+  return { [column]: { neq: value } };
 };
+
+// Special handling for the updated Supabase client syntax
+export const eq = (column: string, value: any) => ({ [column]: value });

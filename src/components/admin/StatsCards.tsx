@@ -5,7 +5,7 @@ import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { supabase, hasError, safeData, createEqFilter } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData, eq } from "@/integrations/supabase/client";
 
 interface UploadData {
   id: string;
@@ -60,11 +60,11 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.id || !upload.station_id) continue;
           
-          // Use filter to avoid TypeScript errors
+          // Use eq helper function for filtering
           const resultsResponse = await supabase
             .from('results')
             .select('id')
-            .filter(createEqFilter('upload_id', upload.id))
+            .eq('upload_id', upload.id)
             .limit(1);
             
           if (hasError(resultsResponse)) {
