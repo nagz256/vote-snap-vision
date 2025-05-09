@@ -136,13 +136,6 @@ export const createNeqFilter = (column: string, value: any) => {
   return { [column]: { neq: value } };
 };
 
-// Proper filter helpers for the current Supabase version
-export const eq = (column: string, value: any) => {
-  return { [column]: value };
-};
-
-// Use filter methods directly - correctly typed
-export const filter = {
-  eq: (column: string, value: any) => ({ [column]: value })
-};
-
+// Use type-safe filters
+export const eq = supabase.eq;
+export const filter = { eq: supabase.eq };

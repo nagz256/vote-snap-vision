@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -11,8 +12,7 @@ import {
   formatUploadData,
   formatVoterStatisticsData,
   formatCandidateData,
-  formatResultData,
-  eq
+  formatResultData
 } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
@@ -315,10 +315,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           image_path: uploadData.imagePath
         });
         
-        // Convert to array for insertion since we must use an array
+        // Use the properly typed insert method
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
-          .insert([formattedUploadData])
+          .insert(formattedUploadData)
           .select();
           
         if (uploadError) throw uploadError;
@@ -345,10 +345,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             total_voters: uploadData.voterStatistics.totalVoters
           });
           
-          // Convert to array for insertion
+          // Use the properly typed insert method
           const { error: statsError } = await supabase
             .from('voter_statistics')
-            .insert([formattedStatsData]);
+            .insert(formattedStatsData);
             
           if (statsError) console.error("Error inserting voter statistics:", statsError);
         }
@@ -357,7 +357,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         for (const result of results) {
           console.log("Processing result for candidate:", result.candidateName);
           
-          // Find candidate by name
+          // Find candidate by name - use string directly with eq
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
@@ -370,10 +370,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             // Create new candidate if not found
             const formattedCandidateData = formatCandidateData(result.candidateName);
             
-            // Convert to array for insertion
+            // Use the properly typed insert method
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
-              .insert([formattedCandidateData])
+              .insert(formattedCandidateData)
               .select();
               
             if (createError || !newCandidate || newCandidate.length === 0) {
@@ -398,10 +398,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             votes: result.votes
           });
           
-          // Convert to array for insertion
+          // Use the properly typed insert method
           const { error: resultError } = await supabase
             .from('results')
-            .insert([formattedResultData]);
+            .insert(formattedResultData);
             
           if (resultError) {
             console.error("Error inserting result:", resultError);
