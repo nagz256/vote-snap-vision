@@ -41,11 +41,11 @@ export const safeDataSingle = <T>(response: any): T | null => {
 };
 
 // Helper to safely get a property from a potentially erroneous response
-export const safeProperty = <T, K extends keyof T>(obj: any, property: K): T[K] | undefined => {
+export const safeProperty = <T, K extends keyof T>(obj: any, property: K, defaultValue?: T[K]): T[K] | undefined => {
   if (!obj || hasError(obj)) {
-    return undefined;
+    return defaultValue;
   }
-  return obj[property as any];
+  return (obj[property as any] as T[K]) || defaultValue;
 };
 
 // Get an ID safely from a response

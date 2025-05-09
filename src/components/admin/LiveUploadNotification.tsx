@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { supabase, hasError, safeDataSingle } from "@/integrations/supabase/client";
+import { supabase, hasError, safeDataSingle, safeProperty } from "@/integrations/supabase/client";
 import { Bell, ChartBar, Users } from "lucide-react";
 
 const LiveUploadNotification = () => {
@@ -34,8 +34,8 @@ const LiveUploadNotification = () => {
             return;
           }
           
-          // Use safe property access
-          const stationName = data?.name || 'Unknown station';
+          // Use safeProperty to safely access data
+          const stationName = safeProperty<{name: string}, 'name'>(data, 'name', 'Unknown station');
           
           // Show notification
           toast(

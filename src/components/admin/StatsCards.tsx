@@ -7,6 +7,11 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 
+interface UploadData {
+  id: string;
+  station_id: string;
+}
+
 const StatsCards = () => {
   const [stats, setStats] = useState({
     totalStations: 0,
@@ -46,7 +51,7 @@ const StatsCards = () => {
         throw uploadsResponse.error;
       }
       
-      const uploadsData = safeData<{id: string, station_id: string}>(uploadsResponse);
+      const uploadsData = safeData<UploadData>(uploadsResponse);
       
       // For uploads with valid results, check the results table
       const validStationIds = new Set<string>();
@@ -55,11 +60,11 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.id || !upload.station_id) continue;
           
-          // Instead of using .eq with a parameter directly, use an object filter
+          // Use a string literal for filtering instead of parameter binding
           const resultsResponse = await supabase
             .from('results')
             .select('id')
-            .filter('upload_id', 'eq', upload.id)
+            .eq('upload_id', upload.id)
             .limit(1);
             
           if (hasError(resultsResponse)) {

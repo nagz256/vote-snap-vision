@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -309,12 +310,14 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       // Try with Supabase first
       try {
         // Insert upload with properly formatted data
+        const uploadInsertData = formatUploadData({
+          station_id: uploadData.stationId,
+          image_path: uploadData.imagePath
+        });
+        
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
-          .insert(formatUploadData({
-            station_id: uploadData.stationId,
-            image_path: uploadData.imagePath
-          }))
+          .insert(uploadInsertData)
           .select();
           
         if (uploadError) throw uploadError;
@@ -327,16 +330,18 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         
         // Add voter statistics if provided
         if (uploadData.voterStatistics && uploadId) {
+          const statsInsertData = formatVoterStatisticsData({
+            upload_id: uploadId,
+            station_id: uploadData.stationId,
+            male_voters: uploadData.voterStatistics.maleVoters,
+            female_voters: uploadData.voterStatistics.femaleVoters,
+            wasted_ballots: uploadData.voterStatistics.wastedBallots,
+            total_voters: uploadData.voterStatistics.totalVoters
+          });
+          
           const { error: statsError } = await supabase
             .from('voter_statistics')
-            .insert(formatVoterStatisticsData({
-              upload_id: uploadId,
-              station_id: uploadData.stationId,
-              male_voters: uploadData.voterStatistics.maleVoters,
-              female_voters: uploadData.voterStatistics.femaleVoters,
-              wasted_ballots: uploadData.voterStatistics.wastedBallots,
-              total_voters: uploadData.voterStatistics.totalVoters
-            }));
+            .insert(statsInsertData);
             
           if (statsError) console.error("Error inserting voter statistics:", statsError);
         }
@@ -356,9 +361,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           if (candidateQueryError || !candidateData) {
             // Create new candidate if not found
+            const candidateInsertData = formatCandidateData(result.candidateName);
+            
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
-              .insert(formatCandidateData(result.candidateName))
+              .insert(candidateInsertData)
               .select();
               
             if (createError || !newCandidate || newCandidate.length === 0) {
@@ -372,13 +379,15 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           }
           
           // Insert result
+          const resultInsertData = formatResultData({
+            upload_id: uploadId,
+            candidate_id: candidateId,
+            votes: result.votes
+          });
+          
           const { error: resultError } = await supabase
             .from('results')
-            .insert(formatResultData({
-              upload_id: uploadId,
-              candidate_id: candidateId,
-              votes: result.votes
-            }));
+            .insert(resultInsertData);
             
           if (resultError) {
             console.error("Error inserting result:", resultError);
