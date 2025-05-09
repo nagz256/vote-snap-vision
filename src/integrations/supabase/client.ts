@@ -136,5 +136,12 @@ export const createNeqFilter = (column: string, value: any) => {
   return { [column]: { neq: value } };
 };
 
-// Special handling for the updated Supabase client syntax
-export const eq = (column: string, value: any) => ({ [column]: value });
+// Simplified filtering helpers for the updated Supabase client
+export const eq = (column: string, value: any) => {
+  return column === value;
+};
+
+// Use filter methods directly
+export const filter = {
+  eq: (column: string, value: any) => ({ [column]: value })
+};

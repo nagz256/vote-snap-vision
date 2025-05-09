@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -11,9 +12,7 @@ import {
   formatUploadData,
   formatVoterStatisticsData,
   formatCandidateData,
-  formatResultData,
-  eq,
-  createNeqFilter
+  formatResultData
 } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
@@ -316,7 +315,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           image_path: uploadData.imagePath
         });
         
-        // Use single object insertion
+        // Convert to array for insertion
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
           .insert(formattedUploadData)
@@ -345,7 +344,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             total_voters: uploadData.voterStatistics.totalVoters
           });
           
-          // Use single object insertion
+          // Convert to array for insertion
           const { error: statsError } = await supabase
             .from('voter_statistics')
             .insert(formattedStatsData);
@@ -370,7 +369,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             // Create new candidate if not found
             const formattedCandidateData = formatCandidateData(result.candidateName);
             
-            // Use single object insertion
+            // Convert to array for insertion
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
               .insert(formattedCandidateData)
@@ -397,7 +396,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             votes: result.votes
           });
           
-          // Use single object insertion
+          // Convert to array for insertion
           const { error: resultError } = await supabase
             .from('results')
             .insert(formattedResultData);
