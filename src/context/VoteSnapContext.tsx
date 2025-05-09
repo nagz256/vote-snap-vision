@@ -12,7 +12,9 @@ import {
   formatUploadData,
   formatVoterStatisticsData,
   formatCandidateData,
-  formatResultData
+  formatResultData,
+  createEqFilter,
+  createNeqFilter
 } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
@@ -120,7 +122,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
                     name
                   )
                 `)
-                .eq('upload_id', upload.id);
+                .filter('upload_id', 'eq', upload.id);
 
               const formattedResults = resultsData?.map((result: any) => ({
                 candidateName: result.candidates.name,
@@ -251,7 +253,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter(createNeqFilter('id', '00000000-0000-0000-0000-000000000000'));
         
         if (resultsError) throw resultsError;
         
@@ -259,7 +261,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter(createNeqFilter('id', '00000000-0000-0000-0000-000000000000'));
         
         if (statsError) throw statsError;
         
@@ -267,7 +269,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter(createNeqFilter('id', '00000000-0000-0000-0000-000000000000'));
         
         if (uploadsError) throw uploadsError;
         
@@ -315,7 +317,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           image_path: uploadData.imagePath
         });
         
-        // Use single object insertion without array
+        // Use proper single object insertion
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
           .insert(uploadInsertData)
@@ -344,7 +346,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             total_voters: uploadData.voterStatistics.totalVoters
           });
           
-          // Use single object insertion
+          // Use proper single object insertion
           const { error: statsError } = await supabase
             .from('voter_statistics')
             .insert(statsInsertData);
@@ -360,7 +362,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
-            .eq('name', result.candidateName)
+            .filter(createEqFilter('name', result.candidateName))
             .maybeSingle();
             
           let candidateId: string;
@@ -369,7 +371,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             // Create new candidate if not found
             const candidateInsertData = formatCandidateData(result.candidateName);
             
-            // Use single object insertion
+            // Use proper single object insertion
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
               .insert(candidateInsertData)
@@ -389,14 +391,14 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             candidateId = candidateData.id;
           }
           
-          // Insert result
+          // Insert result with properly formatted data
           const resultInsertData = formatResultData({
             upload_id: uploadId,
             candidate_id: candidateId,
             votes: result.votes
           });
           
-          // Use single object insertion
+          // Use proper single object insertion
           const { error: resultError } = await supabase
             .from('results')
             .insert(resultInsertData);

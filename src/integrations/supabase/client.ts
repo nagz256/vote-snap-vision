@@ -126,3 +126,12 @@ export const formatResultData = (data: {
     votes: data.votes,
   };
 };
+
+// Helper functions to work around TypeScript type constraints for filtering
+export const createEqFilter = (columnName: string, value: any) => {
+  return { [columnName]: value };
+};
+
+export const createNeqFilter = (columnName: string, value: any) => {
+  return { [columnName]: { neq: value } };
+};
