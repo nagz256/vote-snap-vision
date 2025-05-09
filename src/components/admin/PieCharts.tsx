@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
@@ -7,7 +6,7 @@ import { useState, useEffect } from "react";
 import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { supabase, hasError, safeData } from "@/integrations/supabase/client";
+import { supabase, safeData } from "@/integrations/supabase/client";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -50,7 +49,7 @@ const PieCharts = () => {
       console.log("Fetching vote data for charts...");
       
       // Try direct Supabase query
-      const { data, error } = await supabase
+      const response = await supabase
         .from('results')
         .select(`
           votes,
@@ -59,25 +58,9 @@ const PieCharts = () => {
           )
         `);
         
-      if (error) {
-        console.error("Error fetching results:", error);
-        toast({
-          title: "Error loading data",
-          description: "Failed to load voting results. Please try again later.",
-          variant: "destructive"
-        });
-        
-        setHasData(false);
-        setTotalVotesData([]);
-        setPercentageData([]);
-        setIsLoading(false);
-        setIsRefreshing(false);
-        return;
-      }
+      // Use the safeData function to safely access the results
+      const resultsData = safeData<ResultData>(response);
       
-      // Use safeData to handle the results safely
-      const resultsData = safeData<ResultData>(data);
-
       if (resultsData.length === 0) {
         console.log("No results found in database");
         setHasData(false);

@@ -20,18 +20,18 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 });
 
 // Custom types for better error handling
-type SupabaseResponse = {
+export type SupabaseResponse = {
   data: any;
   error: any;
 };
 
 // Helper function to check if Supabase response has error
-export const hasError = (response: SupabaseResponse): boolean => {
+export const hasError = (response: any): boolean => {
   return response && 'error' in response && response.error !== null;
 };
 
 // Helper function to safely access Supabase data
-export const safeData = <T>(response: SupabaseResponse): T[] => {
+export const safeData = <T>(response: any): T[] => {
   if (hasError(response) || !response || !response.data) {
     return [];
   }
@@ -39,7 +39,7 @@ export const safeData = <T>(response: SupabaseResponse): T[] => {
 };
 
 // Type-safe access to a single data item from response
-export const safeDataSingle = <T>(response: SupabaseResponse): T | null => {
+export const safeDataSingle = <T>(response: any): T | null => {
   if (hasError(response) || !response || !response.data) {
     return null;
   }
@@ -57,11 +57,19 @@ export const safeProperty = <T, K extends keyof T>(obj: any, property: K, defaul
   if (!obj || hasError(obj)) {
     return defaultValue;
   }
-  return (obj[property as any] as T[K]) || defaultValue;
+  
+  // Handle both direct object and response with data property
+  const target = obj.data ? obj.data : obj;
+  
+  if (typeof target === 'object' && property in target) {
+    return target[property as string] as T[K];
+  }
+  
+  return defaultValue;
 };
 
 // Get an ID safely from a response
-export const safeId = (response: SupabaseResponse): string | null => {
+export const safeId = (response: any): string | null => {
   if (hasError(response) || !response || !response.data) {
     return null;
   }

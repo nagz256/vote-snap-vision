@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { supabase, hasError, safeProperty } from "@/integrations/supabase/client";
+import { supabase, safeDataSingle } from "@/integrations/supabase/client";
 import { Bell, ChartBar, Users } from "lucide-react";
 
 interface StationData {
@@ -26,20 +26,15 @@ const LiveUploadNotification = () => {
           }
 
           // Get station info
-          const { data, error } = await supabase
+          const stationResponse = await supabase
             .from('polling_stations')
             .select('name')
             .eq('id', payload.new.station_id)
             .single();
             
-          // Check if there's an error or no data
-          if (error || !data) {
-            console.error("Error fetching station data:", error);
-            return;
-          }
-          
-          // Use safeProperty to safely access data
-          const stationName = data.name || 'Unknown station';
+          // Get station name safely
+          const stationData = safeDataSingle<StationData>(stationResponse);
+          const stationName = stationData?.name || 'Unknown station';
           
           // Show notification
           toast(
