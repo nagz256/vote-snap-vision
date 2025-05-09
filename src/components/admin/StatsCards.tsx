@@ -1,3 +1,4 @@
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw, Trash2 } from "lucide-react";
@@ -52,7 +53,7 @@ const StatsCards = () => {
       
       if (uploadsData && uploadsData.length > 0) {
         for (const upload of uploadsData) {
-          if (!upload.station_id) continue;
+          if (!upload.id || !upload.station_id) continue;
           
           const resultsResponse = await supabase
             .from('results')

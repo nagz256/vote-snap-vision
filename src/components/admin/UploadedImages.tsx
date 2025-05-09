@@ -77,13 +77,16 @@ const UploadedImages = () => {
         return;
       }
       
-      const formattedData = data.map(item => ({
-        id: item.id,
-        imagePath: item.image_path,
-        timestamp: item.timestamp,
-        stationName: item.polling_stations?.name || "Unknown Station",
-        district: item.polling_stations?.district || "Unknown District"
-      }));
+      const formattedData = data.map(item => {
+        if (!item) return null;
+        return {
+          id: item.id,
+          imagePath: item.image_path,
+          timestamp: item.timestamp,
+          stationName: item.polling_stations?.name || "Unknown Station",
+          district: item.polling_stations?.district || "Unknown District"
+        };
+      }).filter(Boolean) as ImageItem[];
       
       setUploads(formattedData);
     } catch (error) {

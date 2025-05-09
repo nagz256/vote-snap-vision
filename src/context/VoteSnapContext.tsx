@@ -4,7 +4,16 @@ import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import { supabase } from "@/integrations/supabase/client";
+import { 
+  supabase, 
+  hasError, 
+  safeData, 
+  safeId,
+  formatUploadData,
+  formatVoterStatisticsData,
+  formatCandidateData,
+  formatResultData
+} from "@/integrations/supabase/client";
 
 interface VoterStatistics {
   maleVoters: number;
@@ -20,7 +29,7 @@ interface VoteSnapContextType {
   logout: () => void;
   addUpload: (upload: Omit<Upload, "id" | "timestamp"> & { voterStatistics?: VoterStatistics }, results: ExtractedResult[]) => Promise<void>;
   getAvailableStations: () => Promise<any[]>;
-  refreshAvailableStations: () => Promise<any[]>; // Changed from Promise<void> to Promise<any[]>
+  refreshAvailableStations: () => Promise<any[]>;
   getTotalVotes: () => Promise<Array<{ name: string; votes: number }>>;
   processDRForm: (imageUrl: string) => Promise<{
     results: ExtractedResult[];
@@ -300,13 +309,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
       
       // Try with Supabase first
       try {
-        // Insert upload
+        // Insert upload with properly formatted data
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
-          .insert({
+          .insert(formatUploadData({
             station_id: uploadData.stationId,
             image_path: uploadData.imagePath
-          })
+          }))
           .select();
           
         if (uploadError) throw uploadError;
@@ -318,17 +327,17 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         console.log("Upload created with ID:", uploadId);
         
         // Add voter statistics if provided
-        if (uploadData.voterStatistics) {
+        if (uploadData.voterStatistics && uploadId) {
           const { error: statsError } = await supabase
             .from('voter_statistics')
-            .insert({
+            .insert(formatVoterStatisticsData({
               upload_id: uploadId,
               station_id: uploadData.stationId,
               male_voters: uploadData.voterStatistics.maleVoters,
               female_voters: uploadData.voterStatistics.femaleVoters,
               wasted_ballots: uploadData.voterStatistics.wastedBallots,
               total_voters: uploadData.voterStatistics.totalVoters
-            });
+            }));
             
           if (statsError) console.error("Error inserting voter statistics:", statsError);
         }
@@ -344,13 +353,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             .eq('name', result.candidateName)
             .single();
             
-          let candidateId;
+          let candidateId: string;
           
           if (candidateQueryError || !candidateData) {
             // Create new candidate if not found
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
-              .insert({ name: result.candidateName })
+              .insert(formatCandidateData(result.candidateName))
               .select();
               
             if (createError || !newCandidate || newCandidate.length === 0) {
@@ -366,11 +375,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           // Insert result
           const { error: resultError } = await supabase
             .from('results')
-            .insert({
+            .insert(formatResultData({
               upload_id: uploadId,
               candidate_id: candidateId,
               votes: result.votes
-            });
+            }));
             
           if (resultError) {
             console.error("Error inserting result:", resultError);

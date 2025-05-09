@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
@@ -29,7 +30,9 @@ interface VoteData {
 
 interface ResultData {
   votes: number;
-  candidates: { name: string };
+  candidates?: { 
+    name: string;
+  };
 }
 
 const PieCharts = () => {
@@ -83,7 +86,7 @@ const PieCharts = () => {
       }
       
       // Filter out invalid results
-      const validResults = data.filter((result: any): result is ResultData => 
+      const validResults = data.filter((result: any) => 
         result && 
         result.candidates && 
         result.candidates.name && 
@@ -104,8 +107,10 @@ const PieCharts = () => {
       // Aggregate votes by candidate name
       const votesByCandidate: Record<string, number> = {};
       validResults.forEach(result => {
-        const candidateName = result.candidates.name;
-        votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
+        if (result.candidates && result.candidates.name) {
+          const candidateName = result.candidates.name;
+          votesByCandidate[candidateName] = (votesByCandidate[candidateName] || 0) + result.votes;
+        }
       });
       
       const votesData = Object.entries(votesByCandidate)

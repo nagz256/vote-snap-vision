@@ -31,3 +31,72 @@ export const safeData = <T>(response: any): T[] => {
   }
   return response.data as T[];
 };
+
+// Type-safe access to a single data item from response
+export const safeDataSingle = <T>(response: any): T | null => {
+  if (hasError(response) || !response || !response.data) {
+    return null;
+  }
+  return response.data[0] as T || null;
+};
+
+// Helper to safely get a property from a potentially erroneous response
+export const safeProperty = <T, K extends keyof T>(obj: any, property: K): T[K] | undefined => {
+  if (!obj || hasError(obj)) {
+    return undefined;
+  }
+  return obj[property as any];
+};
+
+// Get an ID safely from a response
+export const safeId = (response: any): string | null => {
+  if (hasError(response) || !response || !response.data) {
+    return null;
+  }
+  return response.data[0]?.id || null;
+};
+
+// Format data with the correct types for database inserts
+export const formatUploadData = (data: { 
+  station_id: string;
+  image_path: string;
+}): Database['public']['Tables']['uploads']['Insert'] => {
+  return {
+    station_id: data.station_id,
+    image_path: data.image_path,
+  };
+};
+
+export const formatVoterStatisticsData = (data: {
+  upload_id: string;
+  station_id: string;
+  male_voters?: number;
+  female_voters?: number;
+  wasted_ballots?: number;
+  total_voters?: number;
+}): Database['public']['Tables']['voter_statistics']['Insert'] => {
+  return {
+    upload_id: data.upload_id,
+    station_id: data.station_id,
+    male_voters: data.male_voters ?? 0,
+    female_voters: data.female_voters ?? 0,
+    wasted_ballots: data.wasted_ballots ?? 0,
+    total_voters: data.total_voters ?? 0,
+  };
+};
+
+export const formatCandidateData = (name: string): Database['public']['Tables']['candidates']['Insert'] => {
+  return { name };
+};
+
+export const formatResultData = (data: {
+  upload_id: string;
+  candidate_id: string;
+  votes: number;
+}): Database['public']['Tables']['results']['Insert'] => {
+  return {
+    upload_id: data.upload_id,
+    candidate_id: data.candidate_id,
+    votes: data.votes,
+  };
+};

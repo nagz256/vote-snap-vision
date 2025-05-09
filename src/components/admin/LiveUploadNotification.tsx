@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { supabase, hasError } from "@/integrations/supabase/client";
+import { supabase, hasError, safeDataSingle } from "@/integrations/supabase/client";
 import { Bell, ChartBar, Users } from "lucide-react";
 
 const LiveUploadNotification = () => {
@@ -16,6 +16,11 @@ const LiveUploadNotification = () => {
         table: 'uploads' 
       }, async (payload) => {
         try {
+          if (!payload.new || !payload.new.station_id) {
+            console.error("Invalid payload received:", payload);
+            return;
+          }
+
           // Get station info
           const { data: stationData, error } = await supabase
             .from('polling_stations')
@@ -29,7 +34,7 @@ const LiveUploadNotification = () => {
             return;
           }
           
-          const stationName = stationData.name || 'Unknown station';
+          const stationName = stationData?.name || 'Unknown station';
           
           // Show notification
           toast(
