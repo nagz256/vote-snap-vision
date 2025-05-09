@@ -120,7 +120,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
                     name
                   )
                 `)
-                .eq('upload_id', upload.id);
+                .filter('upload_id', 'eq', upload.id);
 
               const formattedResults = resultsData?.map((result: any) => ({
                 candidateName: result.candidates.name,
@@ -251,7 +251,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (resultsError) throw resultsError;
         
@@ -259,7 +259,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (statsError) throw statsError;
         
@@ -267,7 +267,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (uploadsError) throw uploadsError;
         
@@ -317,7 +317,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         
         const { data: uploadResult, error: uploadError } = await supabase
           .from('uploads')
-          .insert(uploadInsertData)
+          .insert([uploadInsertData])
           .select();
           
         if (uploadError) throw uploadError;
@@ -341,7 +341,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           const { error: statsError } = await supabase
             .from('voter_statistics')
-            .insert(statsInsertData);
+            .insert([statsInsertData]);
             
           if (statsError) console.error("Error inserting voter statistics:", statsError);
         }
@@ -354,8 +354,8 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
-            .eq('name', result.candidateName)
-            .single();
+            .filter('name', 'eq', result.candidateName)
+            .maybeSingle();
             
           let candidateId: string;
           
@@ -365,7 +365,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             
             const { data: newCandidate, error: createError } = await supabase
               .from('candidates')
-              .insert(candidateInsertData)
+              .insert([candidateInsertData])
               .select();
               
             if (createError || !newCandidate || newCandidate.length === 0) {
@@ -387,7 +387,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           const { error: resultError } = await supabase
             .from('results')
-            .insert(resultInsertData);
+            .insert([resultInsertData]);
             
           if (resultError) {
             console.error("Error inserting result:", resultError);

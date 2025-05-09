@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
@@ -60,11 +59,11 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.id || !upload.station_id) continue;
           
-          // Use a string literal for filtering instead of parameter binding
+          // For TypeScript compatibility, build the query differently
           const resultsResponse = await supabase
             .from('results')
             .select('id')
-            .eq('upload_id', upload.id)
+            .filter('upload_id', 'eq', upload.id)
             .limit(1);
             
           if (hasError(resultsResponse)) {
