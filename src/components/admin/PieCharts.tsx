@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
@@ -7,7 +6,7 @@ import { useState, useEffect } from "react";
 import { Eye, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 
 // Updated colors with better contrast for visibility
 const COLORS = ['#8884d8', '#82ca9d', '#ff7300', '#0088FE', '#00C49F', '#FFBB28'];
@@ -26,6 +25,11 @@ interface VoteData {
   name: string;
   votes: number;
   percentage?: string;
+}
+
+interface ResultData {
+  votes: number;
+  candidates: { name: string };
 }
 
 const PieCharts = () => {
@@ -79,7 +83,8 @@ const PieCharts = () => {
       }
       
       // Filter out invalid results
-      const validResults = data.filter(result => 
+      const validResults = data.filter((result: any): result is ResultData => 
+        result && 
         result.candidates && 
         result.candidates.name && 
         typeof result.votes === 'number' && 

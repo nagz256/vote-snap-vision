@@ -18,3 +18,16 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   persistSession: true, // Ensure session persistence
   autoRefreshToken: true, // Auto refresh token for better persistence
 });
+
+// Helper function to check if Supabase response has error
+export const hasError = (response: any): boolean => {
+  return response && 'error' in response && response.error !== null;
+};
+
+// Helper function to safely access Supabase data
+export const safeData = <T>(response: any): T[] => {
+  if (hasError(response) || !response || !response.data) {
+    return [];
+  }
+  return response.data as T[];
+};

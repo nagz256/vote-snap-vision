@@ -1,11 +1,10 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 
 const StatsCards = () => {
   const [stats, setStats] = useState({
@@ -25,26 +24,28 @@ const StatsCards = () => {
       setIsRefreshing(true);
       
       // Get total number of polling stations
-      const { data: stationsData, error: stationsError } = await supabase
+      const stationsResponse = await supabase
         .from('polling_stations')
         .select('id');
         
-      if (stationsError) {
-        console.error("Error fetching stations:", stationsError);
-        throw stationsError;
+      if (hasError(stationsResponse)) {
+        console.error("Error fetching stations:", stationsResponse.error);
+        throw stationsResponse.error;
       }
       
-      const totalStations = stationsData ? stationsData.length : 0;
+      const totalStations = safeData(stationsResponse).length;
       
       // Get uploads to determine submitted stations
-      const { data: uploadsData, error: uploadsError } = await supabase
+      const uploadsResponse = await supabase
         .from('uploads')
         .select('id, station_id');
         
-      if (uploadsError) {
-        console.error("Error fetching uploads:", uploadsError);
-        throw uploadsError;
+      if (hasError(uploadsResponse)) {
+        console.error("Error fetching uploads:", uploadsResponse.error);
+        throw uploadsResponse.error;
       }
+      
+      const uploadsData = safeData<{id: string, station_id: string}>(uploadsResponse);
       
       // For uploads with valid results, check the results table
       const validStationIds = new Set<string>();
@@ -53,45 +54,53 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.station_id) continue;
           
-          const { data: resultsData, error: resultsError } = await supabase
+          const resultsResponse = await supabase
             .from('results')
             .select('id')
             .eq('upload_id', upload.id)
             .limit(1);
             
-          if (resultsError) {
-            console.error(`Error checking results for upload ${upload.id}:`, resultsError);
+          if (hasError(resultsResponse)) {
+            console.error(`Error checking results for upload ${upload.id}:`, resultsResponse.error);
             continue;
           }
           
-          if (resultsData && resultsData.length > 0) {
+          const resultsData = safeData(resultsResponse);
+          if (resultsData.length > 0) {
             validStationIds.add(upload.station_id);
           }
         }
       }
       
       // Get total votes from results
-      const { data: resultsData, error: resultsError } = await supabase
+      const resultsResponse = await supabase
         .from('results')
         .select('votes');
         
-      if (resultsError) {
-        console.error("Error fetching results:", resultsError);
-        throw resultsError;
+      if (hasError(resultsResponse)) {
+        console.error("Error fetching results:", resultsResponse.error);
+        throw resultsResponse.error;
       }
       
-      const totalVotesCounted = resultsData ? 
-        resultsData.reduce((sum, item) => sum + (item.votes || 0), 0) : 0;
+      const resultsData = safeData<{votes: number}>(resultsResponse);
+      const totalVotesCounted = resultsData.reduce((sum, item) => sum + (item.votes || 0), 0);
       
       // Get voter statistics
-      const { data: voterStatsData, error: voterStatsError } = await supabase
+      const voterStatsResponse = await supabase
         .from('voter_statistics')
         .select('male_voters, female_voters, wasted_ballots, total_voters');
         
-      if (voterStatsError) {
-        console.error("Error fetching voter statistics:", voterStatsError);
-        throw voterStatsError;
+      if (hasError(voterStatsResponse)) {
+        console.error("Error fetching voter statistics:", voterStatsResponse.error);
+        throw voterStatsResponse.error;
       }
+      
+      const voterStatsData = safeData<{
+        male_voters: number, 
+        female_voters: number, 
+        wasted_ballots: number, 
+        total_voters: number
+      }>(voterStatsResponse);
       
       let totalMale = 0;
       let totalFemale = 0;

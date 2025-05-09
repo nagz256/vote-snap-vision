@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError } from "@/integrations/supabase/client";
 import { Bell, ChartBar, Users } from "lucide-react";
 
 const LiveUploadNotification = () => {
@@ -15,37 +15,47 @@ const LiveUploadNotification = () => {
         schema: 'public', 
         table: 'uploads' 
       }, async (payload) => {
-        // Get station info
-        const { data: stationData } = await supabase
-          .from('polling_stations')
-          .select('name')
-          .eq('id', payload.new.station_id)
-          .single();
+        try {
+          // Get station info
+          const { data: stationData, error } = await supabase
+            .from('polling_stations')
+            .select('name')
+            .eq('id', payload.new.station_id)
+            .single();
+            
+          // Check if there's an error or no data
+          if (error || !stationData) {
+            console.error("Error fetching station data:", error);
+            return;
+          }
           
-        const stationName = stationData?.name || 'Unknown station';
-        
-        // Show notification
-        toast(
-          <div className="flex items-center gap-3">
-            <Bell className="h-5 w-5 text-blue-500" />
-            <div className="flex-1">
-              <p className="font-medium">New Results Uploaded</p>
-              <p className="text-sm text-muted-foreground">
-                {stationName} has submitted new results
-              </p>
-            </div>
-          </div>,
-          {
-            duration: 5000,
-            action: {
-              label: "View",
-              onClick: () => {
-                // Redirect to admin dashboard or direct to the upload
-                window.location.href = '/admin';
+          const stationName = stationData.name || 'Unknown station';
+          
+          // Show notification
+          toast(
+            <div className="flex items-center gap-3">
+              <Bell className="h-5 w-5 text-blue-500" />
+              <div className="flex-1">
+                <p className="font-medium">New Results Uploaded</p>
+                <p className="text-sm text-muted-foreground">
+                  {stationName} has submitted new results
+                </p>
+              </div>
+            </div>,
+            {
+              duration: 5000,
+              action: {
+                label: "View",
+                onClick: () => {
+                  // Redirect to admin dashboard or direct to the upload
+                  window.location.href = '/admin';
+                }
               }
             }
-          }
-        );
+          );
+        } catch (error) {
+          console.error("Error processing upload notification:", error);
+        }
       })
       .subscribe();
     

@@ -1,10 +1,9 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, Download } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ImageUpload {
@@ -13,6 +12,16 @@ interface ImageUpload {
   timestamp: string;
   stationName: string;
   district: string;
+}
+
+interface UploadData {
+  id: string;
+  image_path: string;
+  timestamp: string;
+  polling_stations?: { 
+    name?: string;
+    district?: string; 
+  };
 }
 
 const Uploads = () => {
@@ -38,7 +47,7 @@ const Uploads = () => {
     try {
       setIsLoading(true);
       
-      const { data, error } = await supabase
+      const response = await supabase
         .from('uploads')
         .select(`
           id,
@@ -51,12 +60,14 @@ const Uploads = () => {
         `)
         .order('timestamp', { ascending: false });
         
-      if (error) {
-        console.error("Error fetching uploads:", error);
+      if (hasError(response)) {
+        console.error("Error fetching uploads:", response.error);
         toast.error("Failed to load uploads");
         setIsLoading(false);
         return;
       }
+      
+      const data = safeData<UploadData>(response);
       
       if (!data || data.length === 0) {
         console.log("No uploads found in database");

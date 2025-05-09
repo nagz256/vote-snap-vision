@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +9,7 @@ import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 import StationResultCard from "@/components/admin/StationResultCard";
 import PieCharts from "@/components/admin/PieCharts";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 
 // Define the interface for station results
 interface StationResult {
@@ -23,6 +22,22 @@ interface StationResult {
     candidateName: string;
     votes: number;
   }>;
+}
+
+interface UploadData {
+  id: string;
+  polling_stations?: {
+    id?: string;
+    name?: string;
+    district?: string;
+  };
+}
+
+interface ResultData {
+  votes: number;
+  candidates: {
+    name: string;
+  };
 }
 
 const Admin = () => {
@@ -56,7 +71,7 @@ const Admin = () => {
       console.log("Fetching station results from database...");
       
       // Get all uploads with their station info
-      const { data: uploadsData, error: uploadsError } = await supabase
+      const uploadsResponse = await supabase
         .from('uploads')
         .select(`
           id,
@@ -67,12 +82,14 @@ const Admin = () => {
           )
         `);
         
-      if (uploadsError) {
-        console.error("Error fetching uploads:", uploadsError);
+      if (hasError(uploadsResponse)) {
+        console.error("Error fetching uploads:", uploadsResponse.error);
         setStationResults([]);
         setIsLoadingResults(false);
         return;
       }
+      
+      const uploadsData = safeData<UploadData>(uploadsResponse);
       
       if (!uploadsData || uploadsData.length === 0) {
         console.log("No uploads found");
@@ -83,7 +100,9 @@ const Admin = () => {
       
       // Process each upload to get its results
       const resultsPromises = uploadsData.map(async (upload) => {
-        const { data: resultData, error: resultError } = await supabase
+        if (!upload.id) return null;
+        
+        const resultResponse = await supabase
           .from('results')
           .select(`
             votes,
@@ -93,14 +112,21 @@ const Admin = () => {
           `)
           .eq('upload_id', upload.id);
           
-        if (resultError || !resultData || resultData.length === 0) {
+        if (hasError(resultResponse)) {
+          console.log(`Error getting results for upload ${upload.id}:`, resultResponse.error);
+          return null;
+        }
+        
+        const resultData = safeData<ResultData>(resultResponse);
+        
+        if (resultData.length === 0) {
           console.log(`No results for upload ${upload.id}`);
           return null;
         }
         
         const formattedResults = resultData.map(item => ({
-          candidateName: item.candidates.name,
-          votes: item.votes
+          candidateName: item.candidates?.name || "Unknown Candidate",
+          votes: item.votes || 0
         }));
         
         return {
