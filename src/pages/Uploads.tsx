@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { Eye, Download } from "lucide-react";
-import { supabase, hasError, safeData } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData, createMatchFilter } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ImageUpload {

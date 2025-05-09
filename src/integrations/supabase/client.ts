@@ -127,13 +127,42 @@ export const formatResultData = (data: {
   };
 };
 
-// Helper functions for working with Supabase filtering - safer approaches
-export const createEqFilter = (column: string, value: any) => {
-  return { [column]: { eq: value } };
+// Better table column filter helpers (with proper typing)
+export const createFilter = (column: string, operator: string, value: any) => {
+  return { [column]: { [operator]: value } };
 };
 
-export const createNeqFilter = (column: string, value: any) => {
-  return { [column]: { neq: value } };
+export const createEqFilter = (column: string, value: any) => {
+  return createFilter(column, 'eq', value);
+};
+
+export const createMatchFilter = (obj: Record<string, any>) => {
+  return obj;
+};
+
+// Safe insert helper for Supabase
+export const safeInsert = async <T>(
+  table: string, 
+  data: any,
+  returnData = true
+): Promise<{ data: T | null; error: any }> => {
+  try {
+    const insert = supabase.from(table).insert([data]);
+    const response = returnData ? await insert.select() : await insert;
+    
+    if (hasError(response)) {
+      console.error(`Error inserting into ${table}:`, response.error);
+      return { data: null, error: response.error };
+    }
+    
+    return { 
+      data: returnData && response.data?.[0] ? response.data[0] as T : null, 
+      error: null 
+    };
+  } catch (error) {
+    console.error(`Exception inserting into ${table}:`, error);
+    return { data: null, error };
+  }
 };
 
 // Don't export eq and filter from supabase directly, as they're strictly typed

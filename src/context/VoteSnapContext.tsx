@@ -1,3 +1,4 @@
+
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -11,7 +12,10 @@ import {
   formatUploadData,
   formatVoterStatisticsData,
   formatCandidateData,
-  formatResultData
+  formatResultData,
+  safeDataSingle,
+  createMatchFilter,
+  safeInsert
 } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
@@ -119,7 +123,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
                     name
                   )
                 `)
-                .eq('upload_id', upload.id);
+                .match({ upload_id: upload.id });
 
               const formattedResults = resultsData?.map((result: any) => ({
                 candidateName: result.candidates.name,
@@ -250,7 +254,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .is('id', true); // This is a workaround to delete all rows
+          .filter('id', 'is', 'not.null'); // Delete all rows
         
         if (resultsError) throw resultsError;
         
@@ -258,7 +262,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .is('id', true); // This is a workaround to delete all rows
+          .filter('id', 'is', 'not.null'); // Delete all rows
         
         if (statsError) throw statsError;
         
@@ -266,7 +270,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .is('id', true); // This is a workaround to delete all rows
+          .filter('id', 'is', 'not.null'); // Delete all rows
         
         if (uploadsError) throw uploadsError;
         
@@ -314,21 +318,18 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           image_path: uploadData.imagePath
         });
         
-        // Insert as a single item, not an array
-        const { data: uploadResponse, error: uploadError } = await supabase
-          .from('uploads')
-          .insert([formattedData])
-          .select();
-          
-        if (uploadError) throw uploadError;
+        // Insert using the safe method
+        const uploadResponse = await safeInsert('uploads', formattedData, true);
+        
+        if (uploadResponse.error) throw uploadResponse.error;
         
         // Get the upload ID from the response
-        if (!uploadResponse || uploadResponse.length === 0) {
+        if (!uploadResponse.data) {
           throw new Error('Failed to insert upload');
         }
         
         // Get the upload ID safely
-        const uploadId = uploadResponse[0]?.id;
+        const uploadId = uploadResponse.data.id;
         if (!uploadId) {
           throw new Error('Failed to get upload ID');
         }
@@ -346,23 +347,20 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             total_voters: uploadData.voterStatistics.totalVoters
           });
           
-          // Insert as array
-          const { error: statsError } = await supabase
-            .from('voter_statistics')
-            .insert([formattedStatsData]);
-            
-          if (statsError) console.error("Error inserting voter statistics:", statsError);
+          // Insert using the safe method
+          const statsResponse = await safeInsert('voter_statistics', formattedStatsData);
+          if (statsResponse.error) console.error("Error inserting voter statistics:", statsResponse.error);
         }
         
         // Process results
         for (const result of results) {
           console.log("Processing result for candidate:", result.candidateName);
           
-          // Use object literal for filter instead of eq function
+          // Use createMatchFilter for better typing
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
-            .match({ name: result.candidateName })
+            .match(createMatchFilter({ name: result.candidateName }))
             .maybeSingle();
             
           let candidateId: string;
@@ -371,19 +369,16 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             // Create new candidate if not found
             const formattedCandidateData = formatCandidateData(result.candidateName);
             
-            // Insert as array
-            const { data: newCandidateResponse, error: createError } = await supabase
-              .from('candidates')
-              .insert([formattedCandidateData])
-              .select();
+            // Insert using the safe method
+            const newCandidateResponse = await safeInsert('candidates', formattedCandidateData, true);
               
-            if (createError || !newCandidateResponse || newCandidateResponse.length === 0) {
-              console.error("Error creating new candidate:", createError);
+            if (newCandidateResponse.error || !newCandidateResponse.data) {
+              console.error("Error creating new candidate:", newCandidateResponse.error);
               continue;
             }
             
             // Make sure the ID exists
-            candidateId = newCandidateResponse[0]?.id;
+            candidateId = newCandidateResponse.data.id;
             if (!candidateId) {
               console.error("Failed to get new candidate ID");
               continue;
@@ -399,13 +394,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             votes: result.votes
           });
           
-          // Insert as array
-          const { error: resultError } = await supabase
-            .from('results')
-            .insert([formattedResultData]);
-            
-          if (resultError) {
-            console.error("Error inserting result:", resultError);
+          // Insert using the safe method
+          const resultResponse = await safeInsert('results', formattedResultData);
+          if (resultResponse.error) {
+            console.error("Error inserting result:", resultResponse.error);
           }
         }
         
@@ -570,7 +562,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           // Filter out any invalid results
           const validResults = data.filter(result => 
-            result.candidates && 
+            result && result.candidates && 
             result.candidates.name && 
             typeof result.votes === 'number'
           );

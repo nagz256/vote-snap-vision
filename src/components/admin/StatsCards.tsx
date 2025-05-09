@@ -5,7 +5,7 @@ import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { supabase, hasError, safeData } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData, createMatchFilter } from "@/integrations/supabase/client";
 
 interface UploadData {
   id: string;
@@ -64,7 +64,7 @@ const StatsCards = () => {
           const resultsResponse = await supabase
             .from('results')
             .select('id')
-            .eq('upload_id', upload.id)
+            .match({ upload_id: upload.id })
             .limit(1);
             
           if (hasError(resultsResponse)) {
