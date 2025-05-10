@@ -16,10 +16,13 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     },
   },
   auth: {
-    persistSession: true, // Use auth object for auth-related options
     autoRefreshToken: true, // Auto refresh token for better persistence
+    storageKey: 'supabase_auth' // Use storage key instead of deprecated persistSession
   },
 });
+
+// Valid table names for type-safety
+type ValidTableName = keyof Database['public']['Tables'];
 
 // Custom types for better error handling
 export type SupabaseResponse = {
@@ -144,7 +147,7 @@ export const createMatchFilter = (obj: Record<string, any>) => {
 
 // Safe insert helper for Supabase
 export const safeInsert = async <T>(
-  table: string, 
+  table: ValidTableName, 
   data: any,
   returnData = true
 ): Promise<{ data: T | null; error: any }> => {

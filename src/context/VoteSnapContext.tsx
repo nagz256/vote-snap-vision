@@ -1,4 +1,3 @@
-
 import { createContext, useState, useContext, ReactNode, useEffect } from "react";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Upload, ExtractedResult } from "@/data/mockData";
@@ -15,7 +14,8 @@ import {
   formatResultData,
   safeDataSingle,
   filterOut,
-  safeInsert
+  safeInsert,
+  ValidTableName
 } from "@/integrations/supabase/client";
 
 interface VoterStatistics {
@@ -128,7 +128,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
               const formattedResults = resultsData?.map((result: any) => ({
                 candidateName: result.candidates?.name,
                 votes: result.votes
-              })).filter(r => r.candidateName && r.votes !== undefined) || [];
+              })).filter((r: any) => r.candidateName && r.votes !== undefined) || [];
 
               return {
                 id: upload.id,
@@ -319,7 +319,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         });
         
         // Insert using the safe method
-        const uploadResponse = await safeInsert('uploads', formattedData, true);
+        const uploadResponse = await safeInsert<{id: string}>('uploads', formattedData, true);
         
         if (uploadResponse.error) throw uploadResponse.error;
         
@@ -370,7 +370,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             const formattedCandidateData = formatCandidateData(result.candidateName);
             
             // Insert using the safe method
-            const newCandidateResponse = await safeInsert('candidates', formattedCandidateData, true);
+            const newCandidateResponse = await safeInsert<{id: string}>('candidates', formattedCandidateData, true);
               
             if (newCandidateResponse.error || !newCandidateResponse.data) {
               console.error("Error creating new candidate:", newCandidateResponse.error);
@@ -378,13 +378,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             }
             
             // Make sure the ID exists
-            candidateId = newCandidateResponse.data.id as string;
+            candidateId = newCandidateResponse.data.id;
             if (!candidateId) {
               console.error("Failed to get new candidate ID");
               continue;
             }
           } else {
-            candidateId = candidateData.id as string;
+            candidateId = candidateData.id;
           }
           
           // Insert result
