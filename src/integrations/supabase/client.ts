@@ -22,13 +22,7 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 });
 
 // Valid table names for type-safety
-type ValidTableName = keyof Database['public']['Tables'];
-
-// Custom types for better error handling
-export type SupabaseResponse = {
-  data: any;
-  error: any;
-};
+export type ValidTableName = keyof Database['public']['Tables'];
 
 // Helper function to check if Supabase response has error
 export const hasError = (response: any): boolean => {

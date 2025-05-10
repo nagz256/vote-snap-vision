@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { VoteSnapProvider } from "./context/VoteSnapContext";
 import Layout from "./components/layout/Layout";
-import LiveUploadNotification from "./components/admin/LiveUploadNotification";
 
 // Import pages
 import Home from "./pages/Home";
@@ -25,7 +24,6 @@ const App = () => (
       <VoteSnapProvider>
         <Toaster />
         <Sonner />
-        <LiveUploadNotification />
         <BrowserRouter>
           <Layout>
             <Routes>
