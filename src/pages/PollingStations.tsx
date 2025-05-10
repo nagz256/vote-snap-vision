@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,15 +118,11 @@ const PollingStations = () => {
     
     if (isAdmin) {
       clearDemoData();
-      fetchStations();
+      fetchStations(); // Fetch once when component mounts
     }
   }, [isAdmin, refreshAvailableStations]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      fetchStations();
-    }
-  }, [isAdmin]);
+  // Removed the automatic refresh interval that was causing constant refreshes
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

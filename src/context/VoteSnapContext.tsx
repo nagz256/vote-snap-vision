@@ -70,15 +70,6 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
     // Clear any incorrect data on app start
     if (isAdmin) {
       fetchUploads();
-      
-      // Set up periodic refresh as a backup
-      const refreshInterval = setInterval(() => {
-        fetchUploads();
-      }, 2000);
-      
-      return () => {
-        clearInterval(refreshInterval);
-      };
     }
   }, [isAdmin]);
 
