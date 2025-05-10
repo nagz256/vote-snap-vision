@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, filterOut } from "@/integrations/supabase/client";
 
 type PollingStation = {
   id: string;
@@ -34,11 +34,13 @@ const PollingStations = () => {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
+  const [hasFetchedData, setHasFetchedData] = useState(false); // Track if real data was fetched
   const { isAdmin, refreshAvailableStations } = useVoteSnap();
 
   const fetchStations = async () => {
     try {
       setIsLoading(true);
+      
       // Always try to get from Supabase first
       const { data: stationsData, error } = await supabase
         .from('polling_stations')
@@ -54,6 +56,7 @@ const PollingStations = () => {
       
       if (stationsData && stationsData.length > 0) {
         setStations(stationsData);
+        setHasFetchedData(true); // Mark that we fetched real data
         setIsLoading(false);
         return;
       }
@@ -64,6 +67,7 @@ const PollingStations = () => {
         
         if (mysqlData && mysqlData.length > 0) {
           setStations(mysqlData);
+          setHasFetchedData(true); // Mark that we fetched real data
           setIsLoading(false);
           return;
         }
@@ -71,29 +75,35 @@ const PollingStations = () => {
         console.error("Error fetching from MySQL:", mysqlError);
       }
       
-      // If no data from any source, use mock data
-      const mockData = [
-        {
-          id: "1",
-          name: "Central Station",
-          district: "Downtown",
-          created_at: new Date().toISOString()
-        },
-        {
-          id: "2",
-          name: "East Wing",
-          district: "Eastside",
-          created_at: new Date().toISOString()
-        },
-        {
-          id: "3",
-          name: "South County",
-          district: "Rural",
-          created_at: new Date().toISOString()
-        }
-      ];
-      
-      setStations(mockData);
+      // Only use mock data if we've never fetched real data before
+      // This prevents mock data from reappearing after deletion
+      if (!hasFetchedData) {
+        const mockData = [
+          {
+            id: "1",
+            name: "Central Station",
+            district: "Downtown",
+            created_at: new Date().toISOString()
+          },
+          {
+            id: "2",
+            name: "East Wing",
+            district: "Eastside",
+            created_at: new Date().toISOString()
+          },
+          {
+            id: "3",
+            name: "South County",
+            district: "Rural",
+            created_at: new Date().toISOString()
+          }
+        ];
+        
+        setStations(mockData);
+      } else {
+        // If we've fetched real data before but now there's none, show empty state
+        setStations([]);
+      }
     } catch (error) {
       console.error("Error fetching stations:", error);
       toast.error("Failed to load polling stations");
@@ -155,6 +165,9 @@ const PollingStations = () => {
           // For new stations, we need to fetch to get the new ID
           await fetchStations();
         }
+
+        // Mark that we have real data now
+        setHasFetchedData(true);
       } catch (supabaseError) {
         console.error("Error saving via Supabase:", supabaseError);
         console.log("Falling back to MySQL for save operation");
@@ -191,6 +204,9 @@ const PollingStations = () => {
           
           toast.success("Polling station added successfully");
         }
+
+        // Mark that we have real data now
+        setHasFetchedData(true);
       }
       
       setFormData({ name: "", district: "" });
@@ -247,8 +263,11 @@ const PollingStations = () => {
         
         toast.success("Polling station deleted successfully");
         
-        // Refresh available stations in context
+        // Refresh available stations in context to sync with agent view
         await refreshAvailableStations();
+        
+        // Mark that we have real data (even if it's empty now)
+        setHasFetchedData(true);
       } catch (supabaseError) {
         console.error("Error with Supabase deletion:", supabaseError);
         console.log("Falling back to MySQL for deletion");
@@ -271,12 +290,54 @@ const PollingStations = () => {
         
         toast.success("Polling station deleted successfully");
         
-        // Refresh available stations in context
+        // Refresh available stations in context to sync with agent view
         await refreshAvailableStations();
+        
+        // Mark that we have real data (even if it's empty now)
+        setHasFetchedData(true);
       }
     } catch (error: any) {
       console.error("Error deleting polling station:", error);
       toast.error(`Failed to delete polling station: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Function to permanently clear all mock data and ensure it doesn't reappear
+  const handleClearMockData = async () => {
+    setIsLoading(true);
+    try {
+      // Remove all mock data with numeric IDs (typically "1", "2", "3")
+      const mockIds = ["1", "2", "3"];
+      
+      // Try removing from Supabase first
+      for (const id of mockIds) {
+        await supabase.from('polling_stations').delete().eq('id', id);
+      }
+      
+      // Try removing from MySQL as fallback
+      for (const id of mockIds) {
+        try {
+          await query('DELETE FROM polling_stations WHERE id = ?', [id]);
+        } catch (err) {
+          console.log(`MySQL delete for mock ID ${id} failed, might not exist`);
+        }
+      }
+      
+      // Update local state
+      setStations(prev => prev.filter(station => !mockIds.includes(station.id)));
+      
+      // Ensure we've marked data as fetched so mock data won't reappear
+      setHasFetchedData(true);
+      
+      // Refresh available stations in context
+      await refreshAvailableStations();
+      
+      toast.success("Demo data removed successfully");
+    } catch (error) {
+      console.error("Error clearing mock data:", error);
+      toast.error("Failed to clear demo data");
     } finally {
       setIsLoading(false);
     }
@@ -294,9 +355,20 @@ const PollingStations = () => {
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Manage Polling Stations</h1>
-        <Button onClick={fetchStations} variant="outline" disabled={isLoading}>
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={fetchStations} variant="outline" disabled={isLoading}>
+            Refresh
+          </Button>
+          {/* Add new button to clear all mock data */}
+          <Button 
+            onClick={handleClearMockData}
+            variant="destructive"
+            size="sm"
+            disabled={isLoading}
+          >
+            Remove Demo Data
+          </Button>
+        </div>
       </div>
 
       <Card className="glass-card">
@@ -379,6 +451,10 @@ const PollingStations = () => {
                   <div>
                     <p className="font-medium">{station.name}</p>
                     <p className="text-sm text-muted-foreground">{station.district}</p>
+                    {/* Add indicator for demo data */}
+                    {(['1', '2', '3'].includes(station.id)) && (
+                      <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Demo data</span>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Button 
