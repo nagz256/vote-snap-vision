@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
@@ -136,7 +137,7 @@ const PieCharts = () => {
   useEffect(() => {
     fetchData();
     
-    // Set up a periodic refresh (every 30 seconds)
+    // Set up a periodic refresh (every 30 seconds) for live updates on the admin page
     const refreshInterval = setInterval(() => {
       fetchData();
     }, 30000);

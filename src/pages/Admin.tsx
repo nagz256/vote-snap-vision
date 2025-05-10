@@ -55,7 +55,7 @@ const Admin = () => {
     if (isAdmin) {
       fetchStationResults();
       
-      // Set up periodic refresh
+      // Set up periodic refresh - these are appropriate for the admin dashboard
       const refreshInterval = setInterval(() => {
         fetchStationResults();
       }, 30000);

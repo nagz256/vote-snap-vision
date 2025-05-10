@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,14 +7,6 @@ import { useVoteSnap } from "@/context/VoteSnapContext";
 import { toast } from "sonner";
 import { query, insertQuery } from "@/integrations/mysql/client";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { supabase, filterOut } from "@/integrations/supabase/client";
 
 type PollingStation = {
@@ -32,7 +25,6 @@ const PollingStations = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showDialog, setShowDialog] = useState(false);
   const { isAdmin, refreshAvailableStations } = useVoteSnap();
 
   const fetchStations = async () => {
@@ -122,7 +114,7 @@ const PollingStations = () => {
     }
   }, [isAdmin, refreshAvailableStations]);
 
-  // Removed the automatic refresh interval that was causing constant refreshes
+  // No auto-refresh timer here as requested
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,7 +303,7 @@ const PollingStations = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Manage Polling Stations</h1>
         <Button onClick={fetchStations} variant="outline" disabled={isLoading}>
-          Refresh
+          {isLoading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 
