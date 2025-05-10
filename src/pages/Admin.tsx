@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import StatsCards from "@/components/admin/StatsCards";
 import LiveUploadNotification from "@/components/admin/LiveUploadNotification";
 import StationResultCard from "@/components/admin/StationResultCard";
 import PieCharts from "@/components/admin/PieCharts";
-import { supabase, hasError, safeData } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData, filterOut } from "@/integrations/supabase/client";
 
 // Define the interface for station results
 interface StationResult {
@@ -110,7 +111,7 @@ const Admin = () => {
               name
             )
           `)
-          .eq('upload_id', upload.id);
+          .match(filterOut.match({ upload_id: upload.id }));
           
         if (hasError(resultResponse)) {
           console.log(`Error getting results for upload ${upload.id}:`, resultResponse.error);

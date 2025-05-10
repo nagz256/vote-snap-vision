@@ -10,7 +10,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, filterOut } from "@/integrations/supabase/client";
 import { AlertCircle, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -61,7 +61,7 @@ const DataManagement = () => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (resultsError) throw resultsError;
         
@@ -69,7 +69,7 @@ const DataManagement = () => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (statsError) throw statsError;
         
@@ -77,7 +77,7 @@ const DataManagement = () => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (uploadsError) throw uploadsError;
           
@@ -85,7 +85,7 @@ const DataManagement = () => {
         const { error: candidatesError } = await supabase
           .from('candidates')
           .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (candidatesError) throw candidatesError;
           
@@ -101,7 +101,7 @@ const DataManagement = () => {
             const { error } = await supabase
               .from(selectedTable as ValidTableName)
               .delete()
-              .neq('id', '00000000-0000-0000-0000-000000000000');
+              .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
               
             if (error) throw error;
             

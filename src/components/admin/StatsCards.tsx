@@ -5,7 +5,7 @@ import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { supabase, hasError, safeData, createMatchFilter } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData, filterOut } from "@/integrations/supabase/client";
 
 interface UploadData {
   id: string;
@@ -60,11 +60,11 @@ const StatsCards = () => {
         for (const upload of uploadsData) {
           if (!upload.id || !upload.station_id) continue;
           
-          // Use column-value pairs instead of filter functions
+          // Use filterOut helper for type safety
           const resultsResponse = await supabase
             .from('results')
             .select('id')
-            .match({ upload_id: upload.id })
+            .match(filterOut.match({ upload_id: upload.id }))
             .limit(1);
             
           if (hasError(resultsResponse)) {

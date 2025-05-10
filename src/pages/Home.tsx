@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, hasError, safeData } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const Home = () => {
@@ -58,7 +58,9 @@ const Home = () => {
       const uniqueDistricts = new Set();
       if (districtsData) {
         districtsData.forEach(item => {
-          if (item.district) uniqueDistricts.add(item.district);
+          if (item && typeof item === 'object' && 'district' in item && item.district) {
+            uniqueDistricts.add(item.district);
+          }
         });
       }
       
@@ -75,7 +77,9 @@ const Home = () => {
       const submittedStationIds = new Set();
       if (uploadsData) {
         uploadsData.forEach(upload => {
-          if (upload.station_id) submittedStationIds.add(upload.station_id);
+          if (upload && typeof upload === 'object' && 'station_id' in upload && upload.station_id) {
+            submittedStationIds.add(upload.station_id);
+          }
         });
       }
       

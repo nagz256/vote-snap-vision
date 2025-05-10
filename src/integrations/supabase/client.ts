@@ -15,8 +15,10 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
       eventsPerSecond: 10,
     },
   },
-  persistSession: true, // Ensure session persistence
-  autoRefreshToken: true, // Auto refresh token for better persistence
+  auth: {
+    persistSession: true, // Use auth object for auth-related options
+    autoRefreshToken: true, // Auto refresh token for better persistence
+  },
 });
 
 // Custom types for better error handling
@@ -147,8 +149,8 @@ export const safeInsert = async <T>(
   returnData = true
 ): Promise<{ data: T | null; error: any }> => {
   try {
-    const insert = supabase.from(table).insert([data]);
-    const response = returnData ? await insert.select() : await insert;
+    let query = supabase.from(table).insert(data);
+    const response = returnData ? await query.select() : await query;
     
     if (hasError(response)) {
       console.error(`Error inserting into ${table}:`, response.error);
@@ -165,7 +167,17 @@ export const safeInsert = async <T>(
   }
 };
 
-// Don't export eq and filter from supabase directly, as they're strictly typed
-// and cause issues with string parameters. Instead, provide safer wrappers:
-export const eq = (column: string, value: any) => ({ [column]: value });
-export const filter = { eq: (column: string, value: any) => ({ [column]: value }) };
+// These helpers solve the TypeScript string filter issues
+export const filterOut = {
+  eq: (column: string, value: any) => ({ [column]: value }),
+  neq: (column: string, value: any) => ({ [column]: { neq: value } }),
+  is: (column: string, value: any) => ({ [column]: { is: value } }),
+  in: (column: string, values: any[]) => ({ [column]: { in: values } }),
+  gt: (column: string, value: any) => ({ [column]: { gt: value } }),
+  lt: (column: string, value: any) => ({ [column]: { lt: value } }),
+  gte: (column: string, value: any) => ({ [column]: { gte: value } }),
+  lte: (column: string, value: any) => ({ [column]: { lte: value } }),
+  like: (column: string, value: string) => ({ [column]: { like: value } }),
+  ilike: (column: string, value: string) => ({ [column]: { ilike: value } }),
+  match: (obj: Record<string, any>) => obj
+};

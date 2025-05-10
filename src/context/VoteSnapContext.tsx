@@ -14,7 +14,7 @@ import {
   formatCandidateData,
   formatResultData,
   safeDataSingle,
-  createMatchFilter,
+  filterOut,
   safeInsert
 } from "@/integrations/supabase/client";
 
@@ -126,9 +126,9 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
                 .match({ upload_id: upload.id });
 
               const formattedResults = resultsData?.map((result: any) => ({
-                candidateName: result.candidates.name,
+                candidateName: result.candidates?.name,
                 votes: result.votes
-              })) || [];
+              })).filter(r => r.candidateName && r.votes !== undefined) || [];
 
               return {
                 id: upload.id,
@@ -136,9 +136,9 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
                 imagePath: upload.image_path,
                 timestamp: upload.timestamp,
                 station: {
-                  id: upload.polling_stations.id,
-                  name: upload.polling_stations.name,
-                  district: upload.polling_stations.district
+                  id: upload.polling_stations?.id,
+                  name: upload.polling_stations?.name,
+                  district: upload.polling_stations?.district
                 },
                 results: formattedResults
               } as Upload;
@@ -254,7 +254,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: resultsError } = await supabase
           .from('results')
           .delete()
-          .filter('id', 'is', 'not.null'); // Delete all rows
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (resultsError) throw resultsError;
         
@@ -262,7 +262,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: statsError } = await supabase
           .from('voter_statistics')
           .delete()
-          .filter('id', 'is', 'not.null'); // Delete all rows
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (statsError) throw statsError;
         
@@ -270,7 +270,7 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         const { error: uploadsError } = await supabase
           .from('uploads')
           .delete()
-          .filter('id', 'is', 'not.null'); // Delete all rows
+          .filter('id', 'neq', '00000000-0000-0000-0000-000000000000');
         
         if (uploadsError) throw uploadsError;
         
@@ -356,11 +356,11 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         for (const result of results) {
           console.log("Processing result for candidate:", result.candidateName);
           
-          // Use createMatchFilter for better typing
+          // Use filterOut helper for type safety
           const { data: candidateData, error: candidateQueryError } = await supabase
             .from('candidates')
             .select('id')
-            .match(createMatchFilter({ name: result.candidateName }))
+            .match(filterOut.match({ name: result.candidateName }))
             .maybeSingle();
             
           let candidateId: string;
@@ -378,13 +378,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
             }
             
             // Make sure the ID exists
-            candidateId = newCandidateResponse.data.id;
+            candidateId = newCandidateResponse.data.id as string;
             if (!candidateId) {
               console.error("Failed to get new candidate ID");
               continue;
             }
           } else {
-            candidateId = candidateData.id;
+            candidateId = candidateData.id as string;
           }
           
           // Insert result
@@ -493,7 +493,13 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
         console.log("Uploads from Supabase:", uploads?.length);
         
         // Extract unique station IDs that have been submitted
-        const submittedIds = uploads ? [...new Set(uploads.map(u => u.station_id))] : [];
+        const submittedIds = uploads ? [...new Set(uploads.map(u => {
+          if (u && typeof u === 'object' && 'station_id' in u) {
+            return u.station_id;
+          }
+          return null;
+        }).filter(Boolean))] : [];
+        
         console.log("Submitted station IDs:", submittedIds);
         
         // Filter out submitted stations
@@ -562,7 +568,10 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           // Filter out any invalid results
           const validResults = data.filter(result => 
-            result && result.candidates && 
+            result && 
+            result.candidates && 
+            typeof result.candidates === 'object' &&
+            'name' in result.candidates &&
             result.candidates.name && 
             typeof result.votes === 'number'
           );
@@ -575,8 +584,12 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           // Aggregate votes by candidate name
           const totalVotes: Record<string, number> = {};
           validResults.forEach(result => {
-            const candidateName = result.candidates.name;
-            totalVotes[candidateName] = (totalVotes[candidateName] || 0) + result.votes;
+            if (result.candidates && typeof result.candidates === 'object' && 'name' in result.candidates) {
+              const candidateName = result.candidates.name;
+              if (typeof candidateName === 'string') {
+                totalVotes[candidateName] = (totalVotes[candidateName] || 0) + (typeof result.votes === 'number' ? result.votes : 0);
+              }
+            }
           });
           
           const formattedResults = Object.entries(totalVotes).map(([name, votes]) => ({ name, votes }));
@@ -645,10 +658,16 @@ export const VoteSnapProvider = ({ children }: { children: ReactNode }) => {
           
           // Sum up the values across all polling stations
           const totals = data.reduce((acc: { male: number; female: number; total: number }, stat) => {
+            if (!stat || typeof stat !== 'object') return acc;
+            
+            const male = typeof stat.male_voters === 'number' ? stat.male_voters : 0;
+            const female = typeof stat.female_voters === 'number' ? stat.female_voters : 0;
+            const total = typeof stat.total_voters === 'number' ? stat.total_voters : 0;
+            
             return {
-              male: acc.male + (stat.male_voters || 0),
-              female: acc.female + (stat.female_voters || 0),
-              total: acc.total + (stat.total_voters || 0)
+              male: acc.male + male,
+              female: acc.female + female,
+              total: acc.total + total
             };
           }, { male: 0, female: 0, total: 0 });
           
