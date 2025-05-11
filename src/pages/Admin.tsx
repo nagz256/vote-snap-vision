@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,18 +51,24 @@ const Admin = () => {
 
   // Fetch data when admin logs in
   useEffect(() => {
+    let refreshInterval: number | undefined;
+    
     if (isAdmin) {
+      // Initial fetch
       fetchStationResults();
       
-      // Set up periodic refresh - these are appropriate for the admin dashboard
-      const refreshInterval = setInterval(() => {
+      // Set up periodic refresh - ONLY FOR THE ADMIN PAGE
+      refreshInterval = window.setInterval(() => {
         fetchStationResults();
       }, 30000);
-        
-      return () => {
-        clearInterval(refreshInterval);
-      };
     }
+      
+    return () => {
+      // Always clean up intervals on component unmount
+      if (refreshInterval) {
+        window.clearInterval(refreshInterval);
+      }
+    };
   }, [isAdmin]);
   
   const fetchStationResults = async () => {

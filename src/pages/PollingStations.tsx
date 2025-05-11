@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,7 +113,7 @@ const PollingStations = () => {
     }
   }, [isAdmin, refreshAvailableStations]);
 
-  // No auto-refresh timer here as requested
+  // Explicitly ensure no auto-refresh timer here
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
