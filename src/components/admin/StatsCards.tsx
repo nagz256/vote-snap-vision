@@ -1,4 +1,3 @@
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { ChartBarIcon, UsersIcon, MapPin, RefreshCw } from "lucide-react";
@@ -147,6 +146,15 @@ const StatsCards = () => {
     } catch (error) {
       console.error("Error fetching stats:", error);
       toast.error("Failed to fetch statistics");
+      setStats({
+        totalStations: 0,
+        uploadedStations: 0,
+        maleVoters: 0,
+        femaleVoters: 0,
+        totalVoters: 0,
+        totalVotesCounted: 0,
+        wastedBallots: 0,
+      });
     } finally {
       setIsRefreshing(false);
     }

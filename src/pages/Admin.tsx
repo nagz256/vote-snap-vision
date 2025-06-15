@@ -54,10 +54,9 @@ const Admin = () => {
     let refreshInterval: number | undefined;
     
     if (isAdmin) {
-      // Initial fetch
       fetchStationResults();
       
-      // Set up periodic refresh - ONLY FOR THE ADMIN PAGE
+      // Results auto-refresh interval—ADMIN ONLY!
       refreshInterval = window.setInterval(() => {
         fetchStationResults();
       }, 30000);

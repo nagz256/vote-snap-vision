@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
@@ -127,7 +126,6 @@ const PieCharts = () => {
       setHasData(false);
       setTotalVotesData([]);
       setPercentageData([]);
-    } finally {
       setIsLoading(false);
       setIsRefreshing(false);
       setLastRefresh(new Date());

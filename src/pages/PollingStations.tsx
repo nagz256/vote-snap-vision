@@ -111,6 +111,8 @@ const PollingStations = () => {
       clearDemoData();
       fetchStations(); // Fetch once when component mounts
     }
+    // Explicit note: NO auto-refresh interval or timer here! (Manual Refresh ONLY)
+    // If this page ever refreshes unexpectedly, check parent/ancestor re-mounts or context updates.
   }, [isAdmin, refreshAvailableStations]);
 
   // Explicitly ensure no auto-refresh timer here
@@ -207,8 +209,9 @@ const PollingStations = () => {
       // Refresh available stations in the context
       await refreshAvailableStations();
     } catch (error: any) {
+      // Show error to user
       console.error("Error saving polling station:", error);
-      toast.error(`Failed to save polling station: ${error.message || "Unknown error"}`);
+      toast.error(`Failed to save polling station: ${error?.message || "Unknown error"}`);
     } finally {
       setIsLoading(false);
     }
